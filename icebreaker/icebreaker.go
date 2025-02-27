@@ -43,7 +43,7 @@ type SessionGameResponse struct {
 	} `json:"servers"`
 }
 
-func (c Client) withSessionToken() error {
+func (c *Client) withSessionToken() error {
 	if c.sessionToken != "" {
 		return nil
 	}
@@ -77,7 +77,7 @@ func (c Client) withSessionToken() error {
 	return nil
 }
 
-func (c Client) GetGameSession() (*SessionGameResponse, error) {
+func (c *Client) GetGameSession() (*SessionGameResponse, error) {
 	err := c.withSessionToken()
 
 	if err != nil {
@@ -106,7 +106,7 @@ func (c Client) GetGameSession() (*SessionGameResponse, error) {
 	return &result, nil
 }
 
-func (c Client) SendEvent() error {
+func (c *Client) SendEvent() error {
 	err := c.withSessionToken()
 
 	if err != nil {
@@ -137,7 +137,7 @@ func (c Client) SendEvent() error {
 	return nil
 }
 
-func (c Client) Listen() error {
+func (c *Client) Listen(channel chan EventMessage) error {
 	err := c.withSessionToken()
 
 	if err != nil {
@@ -168,15 +168,16 @@ func (c Client) Listen() error {
 			case *CandidatesMessage:
 				log.Println("Handling a CandidatesMessage:", e)
 			default:
-				log.Println("Unknown event type")
+				log.Println("Unknown event type:", e)
 			}
-			log.Printf("Received event: %v\n\n", event)
+
+			channel <- event
 		}, nil)
 
 	err = eventSource.Get()
 
 	if err != nil {
-		return fmt.Errorf("could not query session game: %s", err)
+		return fmt.Errorf("could not attach to message event endpoint: %s", err)
 	}
 
 	return nil

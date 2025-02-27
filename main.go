@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"pion-tests/icebreaker"
 )
@@ -33,9 +34,19 @@ func main() {
 	}
 
 	// Use the parsed data
-	log.Printf("Parsed API Response: %+v\n", *sessionGameResponse)
+	log.Printf("Parsed API Response: %v\n", *sessionGameResponse)
 
-	go icebreakerClient.Listen()
+	channel := make(chan icebreaker.EventMessage)
+	go icebreakerClient.Listen(channel)
 
-	select {}
+	for msg := range channel {
+		switch event := msg.(type) {
+		case *icebreaker.ConnectedMessage:
+			fmt.Printf("Recieved ConnectedMessage: %s\n", event)
+		case *icebreaker.CandidatesMessage:
+			fmt.Printf("Received CandidatesMessage: %s\n", event)
+		default:
+			fmt.Printf("Unknown event type: %s\n", event)
+		}
+	}
 }
