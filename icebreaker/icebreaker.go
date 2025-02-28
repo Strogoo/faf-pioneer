@@ -106,7 +106,7 @@ func (c *Client) GetGameSession() (*SessionGameResponse, error) {
 	return &result, nil
 }
 
-func (c *Client) SendEvent() error {
+func (c *Client) SendEvent(msg EventMessage) error {
 	err := c.withSessionToken()
 
 	if err != nil {
@@ -115,15 +115,11 @@ func (c *Client) SendEvent() error {
 
 	url := c.apiRoot + "/session/game/" + strconv.FormatUint(c.gameId, 10) + "/events"
 
-	requestData := SessionTokenRequest{
-		GameId: c.gameId,
-	}
-
 	// Make the POST request with JSON payload and Authorization header
 	resp, err := c.httpClient.R().
 		SetHeader("Authorization", "Bearer "+c.sessionToken).
 		SetHeader("Content-Type", "application/json").
-		SetBody(requestData).
+		SetBody(msg).
 		Post(url)
 
 	if err != nil {
