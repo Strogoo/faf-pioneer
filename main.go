@@ -67,12 +67,13 @@ func main() {
 		case *icebreaker.ConnectedMessage:
 			fmt.Printf("Connecting to peer: %s\n", event)
 
-			peer, err := webrtc.CreatePeer(true, event.SenderID, turnServer, func(candidates []*pionwebrtc.ICECandidate) {
+			peer, err := webrtc.CreatePeer(true, event.SenderID, turnServer, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
 				icebreakerClient.SendEvent(
 					icebreaker.CandidatesMessage{
 						GameID:      *gameId,
 						SenderID:    *userId,
 						RecipientID: &event.SenderID,
+						Session:     description,
 						Candidates:  candidates,
 					})
 			})
@@ -87,12 +88,13 @@ func main() {
 			peer := peers[event.SenderID]
 
 			if peer == nil {
-				peer, err = webrtc.CreatePeer(false, event.SenderID, turnServer, func(candidates []*pionwebrtc.ICECandidate) {
+				peer, err = webrtc.CreatePeer(false, event.SenderID, turnServer, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
 					icebreakerClient.SendEvent(
 						icebreaker.CandidatesMessage{
 							GameID:      *gameId,
 							SenderID:    *userId,
 							RecipientID: &event.SenderID,
+							Session:     description,
 							Candidates:  candidates,
 						})
 				})
@@ -103,7 +105,7 @@ func main() {
 				peers[event.SenderID] = peer
 			}
 
-			err := peer.AddCandidates(event.Candidates)
+			err := peer.AddCandidates(event.Session, event.Candidates)
 			if err != nil {
 				panic(err)
 			}

@@ -31,10 +31,11 @@ func (e ConnectedMessage) GetSenderId() uint     { return e.SenderID }
 func (e ConnectedMessage) GetRecipientId() *uint { return e.RecipientID }
 
 type CandidatesMessage struct {
-	GameID      uint64                 `json:"gameId"`
-	SenderID    uint                   `json:"senderId"`
-	RecipientID *uint                  `json:"recipientId"`
-	Candidates  []*webrtc.ICECandidate `json:"candidates"`
+	GameID      uint64                     `json:"gameId"`
+	SenderID    uint                       `json:"senderId"`
+	RecipientID *uint                      `json:"recipientId"`
+	Session     *webrtc.SessionDescription `json:"session"`
+	Candidates  []*webrtc.ICECandidate     `json:"candidates"`
 }
 
 func (e CandidatesMessage) String() string {
