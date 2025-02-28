@@ -63,7 +63,15 @@ func CreatePeer(
 
 	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
-			peer.onCandidatesGathered(peer.offer, peer.pendingCandidates)
+			var sessionDescription *webrtc.SessionDescription
+
+			if peer.Offerer {
+				sessionDescription = peer.offer
+			} else {
+				sessionDescription = peer.answer
+			}
+
+			peer.onCandidatesGathered(sessionDescription, peer.pendingCandidates)
 			return
 		}
 
@@ -92,6 +100,20 @@ func (p *Peer) AddCandidates(session *webrtc.SessionDescription, candidates []*w
 	err := p.connection.SetRemoteDescription(*session)
 	if err != nil {
 		panic(err)
+	}
+
+	if !p.Offerer {
+		answer, err := p.connection.CreateAnswer(nil)
+		if err != nil {
+			panic(err)
+		}
+
+		p.answer = &answer
+		// Sets the LocalDescription, and starts our UDP listeners
+		err = p.connection.SetLocalDescription(answer)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return nil
