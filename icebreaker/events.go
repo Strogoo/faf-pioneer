@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pion/webrtc/v4"
+	"strconv"
 )
 
 type EventMessage interface {
@@ -19,18 +20,25 @@ type BaseEvent struct {
 }
 
 type ConnectedMessage struct {
+	EventType   string `json:"eventType"`
 	GameID      uint64 `json:"gameId"`
 	SenderID    uint   `json:"senderId"`
 	RecipientID *uint  `json:"recipientId,omitempty"`
 }
 
 func (e ConnectedMessage) String() string {
-	return fmt.Sprintf("ConnectedMessage { GameId=%d, SenderId=%d, RecipientId=%v }", e.GameID, e.SenderID, e.RecipientID)
+	recipient := "nil"
+	if e.RecipientID != nil {
+		recipient = strconv.Itoa(int(*e.RecipientID))
+	}
+
+	return fmt.Sprintf("ConnectedMessage { GameId=%d, SenderId=%d, RecipientId=%s }", e.GameID, e.SenderID, recipient)
 }
 func (e ConnectedMessage) GetSenderId() uint     { return e.SenderID }
 func (e ConnectedMessage) GetRecipientId() *uint { return e.RecipientID }
 
 type CandidatesMessage struct {
+	EventType   string                     `json:"eventType"`
 	GameID      uint64                     `json:"gameId"`
 	SenderID    uint                       `json:"senderId"`
 	RecipientID *uint                      `json:"recipientId"`
@@ -39,7 +47,12 @@ type CandidatesMessage struct {
 }
 
 func (e CandidatesMessage) String() string {
-	return fmt.Sprintf("CandidatesMessage { GameId=%d, SenderId=%d, RecipientId=%v }", e.GameID, e.SenderID, e.RecipientID)
+	recipient := "nil"
+	if e.RecipientID != nil {
+		recipient = strconv.Itoa(int(*e.RecipientID))
+	}
+
+	return fmt.Sprintf("CandidatesMessage { GameId=%d, SenderId=%d, RecipientId=%s }", e.GameID, e.SenderID, recipient)
 }
 func (e CandidatesMessage) GetSenderId() uint     { return e.SenderID }
 func (e CandidatesMessage) GetRecipientId() *uint { return e.RecipientID }

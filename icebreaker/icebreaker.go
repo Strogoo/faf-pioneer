@@ -1,6 +1,7 @@
 package icebreaker
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"resty.dev/v3"
@@ -78,6 +79,7 @@ func (c *Client) withSessionToken() error {
 }
 
 func (c *Client) GetGameSession() (*SessionGameResponse, error) {
+	log.Printf("Getting game session id %d\n", c.gameId)
 	err := c.withSessionToken()
 
 	if err != nil {
@@ -115,6 +117,9 @@ func (c *Client) SendEvent(msg EventMessage) error {
 
 	url := c.apiRoot + "/session/game/" + strconv.FormatUint(c.gameId, 10) + "/events"
 
+	m, _ := json.Marshal(msg)
+	log.Printf("Event body: %s\n", m)
+
 	// Make the POST request with JSON payload and Authorization header
 	resp, err := c.httpClient.R().
 		SetHeader("Authorization", "Bearer "+c.sessionToken).
@@ -126,7 +131,7 @@ func (c *Client) SendEvent(msg EventMessage) error {
 		return fmt.Errorf("posting session event failed: %v", err)
 	}
 
-	if resp.StatusCode() != 200 {
+	if resp.StatusCode() != 204 {
 		return fmt.Errorf("posting session event failed: %v", resp.Status())
 	}
 
@@ -169,6 +174,8 @@ func (c *Client) Listen(channel chan EventMessage) error {
 
 			channel <- event
 		}, nil)
+
+	log.Printf("Listening for server side events on %s\n", url)
 
 	err = eventSource.Get()
 
