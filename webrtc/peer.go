@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"github.com/pion/webrtc/v4"
 	"log"
+	"os"
 	"sync"
+	"time"
 )
 
 type Peer struct {
@@ -87,7 +89,20 @@ func CreatePeer(
 	})
 
 	connection.OnDataChannel(func(d *webrtc.DataChannel) {
-		log.Printf("Peer DataChannel has changed %s \n", d.Label())
+		log.Printf("Peer DataChannel established %s \n", d.Label())
+		hostname, _ := os.Hostname()
+		d.SendText(fmt.Sprintf("Hello, World from %s at %s!", hostname, time.Now()))
+	})
+
+	dataChannel.OnOpen(func() {
+		log.Printf("DataChannel opened\n")
+	})
+	dataChannel.OnClose(func() {
+		log.Printf("DataChannel closed\n")
+	})
+
+	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		log.Printf("DataChannel message received: %s\n", msg.Data)
 	})
 
 	peer.connection = connection
