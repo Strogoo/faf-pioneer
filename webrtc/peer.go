@@ -51,6 +51,7 @@ func CreatePeer(
 		}
 
 		peer.gameDataChannel = dataChannel
+		peer.RegisterDataChannel()
 
 		// Sets the LocalDescription, and starts our UDP listeners
 		// Note: this will start the gathering of ICE candidates
@@ -92,43 +93,14 @@ func CreatePeer(
 		if peer.Offerer {
 			log.Printf("You are offerer")
 		} else {
-			log.Printf("You are answeer")
+			log.Printf("You are answerer")
 		}
 	})
 
 	// Register data channel creation handling
 	connection.OnDataChannel(func(dataChannel *webrtc.DataChannel) {
-		fmt.Printf("New DataChannel %s %d\n", dataChannel.Label(), dataChannel.ID())
-
-		// Register channel opening handling
-		dataChannel.OnOpen(func() {
-			fmt.Printf(
-				"Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n",
-				dataChannel.Label(), dataChannel.ID(),
-			)
-
-			ticker := time.NewTicker(5 * time.Second)
-			defer ticker.Stop()
-			for range ticker.C {
-				message, sendTextErr := randutil.GenerateCryptoRandomString(
-					15, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-				)
-				if sendTextErr != nil {
-					panic(sendTextErr)
-				}
-
-				// Send the message as text
-				fmt.Printf("Sending '%s'\n", message)
-				if sendTextErr = dataChannel.SendText(message); sendTextErr != nil {
-					panic(sendTextErr)
-				}
-			}
-		})
-
-		// Register text message handling
-		dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-			fmt.Printf("Message from DataChannel '%s': '%s'\n", dataChannel.Label(), string(msg.Data))
-		})
+		peer.gameDataChannel = dataChannel
+		peer.RegisterDataChannel()
 	})
 
 	peer.connection = connection
@@ -174,4 +146,41 @@ func (p *Peer) Close() error {
 	}
 
 	return nil
+}
+
+func (p *Peer) RegisterDataChannel() {
+	fmt.Printf(
+		"Registerin data channel handlers for '%s'-'%d'",
+		p.gameDataChannel.Label(), p.gameDataChannel.ID(),
+	)
+
+	// Register channel opening handling
+	p.gameDataChannel.OnOpen(func() {
+		fmt.Printf(
+			"Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n",
+			p.gameDataChannel.Label(), p.gameDataChannel.ID(),
+		)
+
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			message, sendTextErr := randutil.GenerateCryptoRandomString(
+				15, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+			)
+			if sendTextErr != nil {
+				panic(sendTextErr)
+			}
+
+			// Send the message as text
+			fmt.Printf("Sending '%s'\n", message)
+			if sendTextErr = p.gameDataChannel.SendText(message); sendTextErr != nil {
+				panic(sendTextErr)
+			}
+		}
+	})
+
+	// Register text message handling
+	p.gameDataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+		fmt.Printf("Message from DataChannel '%s': '%s'\n", p.gameDataChannel.Label(), string(msg.Data))
+	})
 }
