@@ -88,6 +88,12 @@ func CreatePeer(
 
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("Peer Connection State has changed %s \n", state.String())
+
+		if peer.Offerer {
+			log.Printf("You are offerer")
+		} else {
+			log.Printf("You are answeer")
+		}
 	})
 
 	// Register data channel creation handling
