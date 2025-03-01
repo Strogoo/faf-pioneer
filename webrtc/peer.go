@@ -49,6 +49,10 @@ func CreatePeer(
 		return nil, peer.wrapError("cannot create data channel", err)
 	}
 
+	log.Printf("BufferedAmountLowThreshold: %d", dataChannel.BufferedAmountLowThreshold())
+	dataChannel.SetBufferedAmountLowThreshold(0)
+	log.Printf("BufferedAmountLowThreshold: %d", dataChannel.BufferedAmountLowThreshold())
+
 	if offerer {
 		// Sets the LocalDescription, and starts our UDP listeners
 		// Note: this will start the gathering of ICE candidates
