@@ -2,9 +2,9 @@ package webrtc
 
 import (
 	"fmt"
+	"github.com/pion/randutil"
 	"github.com/pion/webrtc/v4"
 	"log"
-	"os"
 	"sync"
 	"time"
 )
@@ -88,27 +88,38 @@ func CreatePeer(
 		log.Printf("Peer Connection State has changed %s \n", state.String())
 	})
 
+	// Register data channel creation handling
 	connection.OnDataChannel(func(dataChannel *webrtc.DataChannel) {
+		fmt.Printf("New DataChannel %s %d\n", dataChannel.Label(), dataChannel.ID())
 
+		// Register channel opening handling
 		dataChannel.OnOpen(func() {
-			log.Printf("DataChannel opened\n")
+			fmt.Printf(
+				"Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n",
+				dataChannel.Label(), dataChannel.ID(),
+			)
 
-			hostname, err := os.Hostname()
-			if err != nil {
-				panic(err)
-			}
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				message, sendTextErr := randutil.GenerateCryptoRandomString(
+					15, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+				)
+				if sendTextErr != nil {
+					panic(sendTextErr)
+				}
 
-			err = dataChannel.SendText(fmt.Sprintf("Hello, World [OnOpen] from %s at %s!", hostname, time.Now()))
-			if err != nil {
-				panic(err)
+				// Send the message as text
+				fmt.Printf("Sending '%s'\n", message)
+				if sendTextErr = dataChannel.SendText(message); sendTextErr != nil {
+					panic(sendTextErr)
+				}
 			}
 		})
-		dataChannel.OnClose(func() {
-			log.Printf("DataChannel closed\n")
-		})
 
+		// Register text message handling
 		dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-			log.Printf("DataChannel message received: %s\n", msg.Data)
+			fmt.Printf("Message from DataChannel '%s': '%s'\n", dataChannel.Label(), string(msg.Data))
 		})
 	})
 
