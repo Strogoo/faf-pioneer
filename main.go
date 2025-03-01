@@ -62,12 +62,15 @@ func main() {
 	// WebRTC setup
 	peers := make(map[uint]*webrtc.Peer)
 
+	var peerUdpPort uint16 = 18000 // TODO: Pick a "free random one"
+	var gameUdpPort uint16 = 19000 // TODO: Get via GpgNet from the game
+
 	for msg := range channel {
 		switch event := msg.(type) {
 		case *icebreaker.ConnectedMessage:
 			log.Printf("Connecting to peer: %s\n", event)
 
-			peer, err := webrtc.CreatePeer(true, event.SenderID, turnServer, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
+			peer, err := webrtc.CreatePeer(true, event.SenderID, turnServer, peerUdpPort, gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
 				err := icebreakerClient.SendEvent(
 					icebreaker.CandidatesMessage{
 						EventType:   "candidates",
@@ -93,7 +96,7 @@ func main() {
 			peer := peers[event.SenderID]
 
 			if peer == nil {
-				peer, err = webrtc.CreatePeer(false, event.SenderID, turnServer, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
+				peer, err = webrtc.CreatePeer(false, event.SenderID, turnServer, peerUdpPort, gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
 					err := icebreakerClient.SendEvent(
 						icebreaker.CandidatesMessage{
 							EventType:   "candidates",
