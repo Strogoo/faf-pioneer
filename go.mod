@@ -3,6 +3,7 @@ module faf-pioneer
 go 1.24.0
 
 require (
+	github.com/pion/randutil v0.1.0
 	github.com/pion/webrtc/v4 v4.0.11
 	resty.dev/v3 v3.0.0-beta.1
 )
@@ -15,7 +16,6 @@ require (
 	github.com/pion/interceptor v0.1.37 // indirect
 	github.com/pion/logging v0.2.3 // indirect
 	github.com/pion/mdns/v2 v2.0.7 // indirect
-	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.15 // indirect
 	github.com/pion/rtp v1.8.11 // indirect
 	github.com/pion/sctp v1.8.36 // indirect
@@ -25,7 +25,7 @@ require (
 	github.com/pion/transport/v3 v3.0.7 // indirect
 	github.com/pion/turn/v4 v4.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
-	golang.org/x/crypto v0.33.0 // indirect
+	golang.org/x/crypto v0.35.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 )
