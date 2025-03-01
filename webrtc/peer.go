@@ -90,13 +90,13 @@ func CreatePeer(
 
 	connection.OnDataChannel(func(d *webrtc.DataChannel) {
 		log.Printf("Peer DataChannel established %s \n", d.Label())
-		hostname, err := os.Hostname()
 
+		hostname, err := os.Hostname()
 		if err != nil {
 			panic(err)
 		}
 
-		err = d.SendText(fmt.Sprintf("Hello, World from %s at %s!", hostname, time.Now()))
+		err = d.SendText(fmt.Sprintf("Hello, World [OnDataChannel] from %s at %s!", hostname, time.Now()))
 		if err != nil {
 			panic(err)
 		}
@@ -104,6 +104,16 @@ func CreatePeer(
 
 	dataChannel.OnOpen(func() {
 		log.Printf("DataChannel opened\n")
+
+		hostname, err := os.Hostname()
+		if err != nil {
+			panic(err)
+		}
+
+		err = dataChannel.SendText(fmt.Sprintf("Hello, World [OnOpen] from %s at %s!", hostname, time.Now()))
+		if err != nil {
+			panic(err)
+		}
 	})
 	dataChannel.OnClose(func() {
 		log.Printf("DataChannel closed\n")
