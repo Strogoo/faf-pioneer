@@ -3,6 +3,7 @@ package webrtc
 import (
 	"fmt"
 	"github.com/pion/webrtc/v4"
+	"log"
 	"sync"
 )
 
@@ -79,6 +80,14 @@ func CreatePeer(
 		defer peer.candidatesMux.Unlock()
 
 		peer.pendingCandidates = append(peer.pendingCandidates, candidate)
+	})
+
+	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		log.Printf("Peer Connection State has changed %s \n", state.String())
+	})
+
+	connection.OnDataChannel(func(d *webrtc.DataChannel) {
+		log.Printf("Peer DataChannel has changed %s \n", d.Label())
 	})
 
 	peer.connection = connection
