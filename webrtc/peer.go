@@ -88,25 +88,28 @@ func CreatePeer(
 		log.Printf("Peer Connection State has changed %s \n", state.String())
 	})
 
-	dataChannel.OnOpen(func() {
-		log.Printf("DataChannel opened\n")
+	connection.OnDataChannel(func(dataChannel *webrtc.DataChannel) {
 
-		hostname, err := os.Hostname()
-		if err != nil {
-			panic(err)
-		}
+		dataChannel.OnOpen(func() {
+			log.Printf("DataChannel opened\n")
 
-		err = dataChannel.SendText(fmt.Sprintf("Hello, World [OnOpen] from %s at %s!", hostname, time.Now()))
-		if err != nil {
-			panic(err)
-		}
-	})
-	dataChannel.OnClose(func() {
-		log.Printf("DataChannel closed\n")
-	})
+			hostname, err := os.Hostname()
+			if err != nil {
+				panic(err)
+			}
 
-	dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		log.Printf("DataChannel message received: %s\n", msg.Data)
+			err = dataChannel.SendText(fmt.Sprintf("Hello, World [OnOpen] from %s at %s!", hostname, time.Now()))
+			if err != nil {
+				panic(err)
+			}
+		})
+		dataChannel.OnClose(func() {
+			log.Printf("DataChannel closed\n")
+		})
+
+		dataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
+			log.Printf("DataChannel message received: %s\n", msg.Data)
+		})
 	})
 
 	peer.connection = connection
