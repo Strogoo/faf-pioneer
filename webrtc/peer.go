@@ -90,16 +90,16 @@ func CreatePeer(
 func (p *Peer) AddCandidates(session *webrtc.SessionDescription, candidates []*webrtc.ICECandidate) error {
 	p.answer = session
 
+	err := p.connection.SetRemoteDescription(*session)
+	if err != nil {
+		panic(err)
+	}
+
 	for _, candidate := range candidates {
 		err := p.connection.AddICECandidate(candidate.ToJSON())
 		if err != nil {
 			return p.wrapError("cannot add candidate to peer", err)
 		}
-	}
-
-	err := p.connection.SetRemoteDescription(*session)
-	if err != nil {
-		panic(err)
 	}
 
 	if !p.Offerer {
