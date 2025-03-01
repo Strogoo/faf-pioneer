@@ -43,13 +43,15 @@ func CreatePeer(
 		return nil, peer.wrapError("cannot create peer connection", err)
 	}
 
-	// default is ordered and announced, we don't need to pass options
-	dataChannel, err := connection.CreateDataChannel("gameData", nil)
-	if err != nil {
-		return nil, peer.wrapError("cannot create data channel", err)
-	}
-
 	if offerer {
+		// default is ordered and announced, we don't need to pass options
+		dataChannel, err := connection.CreateDataChannel("gameData", nil)
+		if err != nil {
+			return nil, peer.wrapError("cannot create data channel", err)
+		}
+
+		peer.gameDataChannel = dataChannel
+
 		// Sets the LocalDescription, and starts our UDP listeners
 		// Note: this will start the gathering of ICE candidates
 		offer, err := connection.CreateOffer(nil)
@@ -124,7 +126,6 @@ func CreatePeer(
 	})
 
 	peer.connection = connection
-	peer.gameDataChannel = dataChannel
 
 	return &peer, nil
 }
