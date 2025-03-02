@@ -1,6 +1,7 @@
 package main
 
 import (
+	"faf-pioneer/forgedalliance"
 	"faf-pioneer/icebreaker"
 	"faf-pioneer/webrtc"
 	"flag"
@@ -16,6 +17,7 @@ func main() {
 	gameId := flag.Uint64("game-id", 0, "The ID of the game session")
 	accessToken := flag.String("access-token", "", "The access token for authentication")
 	apiRoot := flag.String("api-root", "https://api.faforever.com/ice", "The root uri of the icebreaker api")
+	gpgNetPort := flag.Uint("gpgnet-port", 0, "The port which the game will connect to for exchanging GgpNet messages")
 
 	// Parse the command-line flags
 	flag.Parse()
@@ -32,6 +34,17 @@ func main() {
 	if *accessToken == "" {
 		log.Fatalf("Error: --access-token is required and cannot be empty.")
 	}
+
+	if *gpgNetPort == 0 {
+		log.Fatalf("Error: --gpgnet-port is required and cannot be empty.")
+	}
+
+	// Start the Gpgnet Control Server
+	gpgNetServer := forgedalliance.NewGpgNetServer(*gpgNetPort)
+	gpgNetFromGameChannel := make(chan *forgedalliance.GpgMessage)
+	adapterToGameChannel := make(chan *forgedalliance.GpgMessage)
+
+	go gpgNetServer.Listen(gpgNetFromGameChannel, adapterToGameChannel)
 
 	// Gather ICE servers and listen for WebRTC events
 	icebreakerClient := icebreaker.NewClient(*apiRoot, *gameId, *accessToken)
