@@ -73,7 +73,7 @@ func (s *GpgNetServer) Listen(gameToAdapter chan *GpgMessage, adapterToGame chan
 		go func() {
 			bufferedWriter := bufio.NewWriter(conn)
 			faStreamWriter := NewFaStreamWriter(bufferedWriter)
-			for msg := range gameToAdapter {
+			for msg := range adapterToGame {
 				faStreamWriter.WriteMessage(*msg)
 			}
 		}()
