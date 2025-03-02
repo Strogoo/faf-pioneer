@@ -46,9 +46,15 @@ func (w *FaStreamWriter) writeArgs(args []interface{}) error {
 		case int:
 			w.w.WriteByte(FaStreamConstants.FieldTypes.INT)
 			binary.Write(w.w, binary.LittleEndian, int32(v))
-		case float64:
+		case uint:
 			w.w.WriteByte(FaStreamConstants.FieldTypes.INT)
 			binary.Write(w.w, binary.LittleEndian, int32(v))
+		case uint16:
+			w.w.WriteByte(FaStreamConstants.FieldTypes.INT)
+			binary.Write(w.w, binary.LittleEndian, int32(v))
+		case int32:
+			w.w.WriteByte(FaStreamConstants.FieldTypes.INT)
+			binary.Write(w.w, binary.LittleEndian, v)
 		case string:
 			w.w.WriteByte(FaStreamConstants.FieldTypes.STRING)
 			if err := w.writeString(v); err != nil {
