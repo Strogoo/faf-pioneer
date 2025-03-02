@@ -3,6 +3,7 @@ package forgedalliance
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"strconv"
 )
@@ -45,6 +46,8 @@ func (s *GpgNetServer) Listen(gameToAdapter chan *GpgMessage, adapterToGame chan
 		faStreamreader := NewFaStreamReader(bufferReader)
 
 		go func() {
+			log.Println("Waiting for incoming GpgNet message")
+
 			for {
 				// Read one message from the connection.
 				command, err := faStreamreader.ReadString()
@@ -73,6 +76,9 @@ func (s *GpgNetServer) Listen(gameToAdapter chan *GpgMessage, adapterToGame chan
 		go func() {
 			bufferedWriter := bufio.NewWriter(conn)
 			faStreamWriter := NewFaStreamWriter(bufferedWriter)
+
+			log.Println("Waiting for GpgNet messages to be sent")
+
 			for msg := range adapterToGame {
 				faStreamWriter.WriteMessage(*msg)
 			}
