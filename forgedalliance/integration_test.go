@@ -54,8 +54,10 @@ func TestStandalone(t *testing.T) {
 
 	fmt.Println("Forged Alliance started successfully!")
 
+	// Receive GameState=Idle "hello" from game
 	gameStateLobby := <-gameToAdapter
 
+	// Send message to game to create the lobby and receive acknowledgement
 	var createGameLobbyMessage GpgMessage = &CreateLobbyMessage{
 		Command:          "CreateLobby",
 		LobbyInitMode:    0,
@@ -65,16 +67,19 @@ func TestStandalone(t *testing.T) {
 		UnknownParameter: 1,
 	}
 	adapterToGame <- &createGameLobbyMessage
-
 	gameStateLobby = <-gameToAdapter
 
+	// Send mapname (optional, it will use a fallback default map if empty)
+	// This message is required else game is stuck on Connecting...
 	var message GpgMessage = &HostGameMessage{
 		Command: "HostGame",
-		MapName: "scmp_035",
+		MapName: "",
 	}
 	adapterToGame <- &message
-
 	gameStateLobby = <-gameToAdapter
+
+	// Send more things if desired..
+	// var message..
 
 	log.Printf("GameStateLobby: %v", gameStateLobby)
 
