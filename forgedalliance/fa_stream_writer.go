@@ -96,15 +96,18 @@ func (w *FaStreamWriter) Close() error {
 // FaStreamConstants defines constants for field types.
 var FaStreamConstants = struct {
 	FieldTypes struct {
-		INT    byte
-		STRING byte
+		INT             byte
+		STRING          byte
+		FOLLOWUP_STRING byte
 	}
 }{
 	FieldTypes: struct {
-		INT    byte
-		STRING byte
+		INT             byte
+		STRING          byte
+		FOLLOWUP_STRING byte
 	}{
-		INT:    0x01,
-		STRING: 0x02,
+		INT:             0x00,
+		STRING:          0x01,
+		FOLLOWUP_STRING: 0x02,
 	},
 }
