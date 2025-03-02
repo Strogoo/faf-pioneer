@@ -18,6 +18,12 @@ func TestStandalone(t *testing.T) {
 
 	gameStateLobby := <-gameToAdapter
 
+	var message GpgMessage = &HostGameMessage{
+		Command: "HostGame",
+		MapName: "SCMP_0014",
+	}
+	adapterToGame <- &message
+
 	log.Printf("GameStateLobby: %v", gameStateLobby)
 
 }

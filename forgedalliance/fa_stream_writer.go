@@ -24,9 +24,6 @@ func NewFaStreamWriter(w *bufio.Writer) *FaStreamWriter {
 
 // writeString writes a string with its length prefix.
 func (w *FaStreamWriter) writeString(s string) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	// Write the length of the string
 	if err := binary.Write(w.w, binary.LittleEndian, int32(len(s))); err != nil {
 		return err
@@ -38,9 +35,6 @@ func (w *FaStreamWriter) writeString(s string) error {
 
 // writeArgs writes a list of arguments with their types.
 func (w *FaStreamWriter) writeArgs(args []interface{}) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	// Write number of arguments
 	if err := binary.Write(w.w, binary.LittleEndian, int32(len(args))); err != nil {
 		return err
