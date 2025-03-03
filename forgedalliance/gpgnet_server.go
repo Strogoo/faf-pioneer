@@ -52,13 +52,13 @@ func (s *GpgNetServer) Listen(gameToAdapter chan *GpgMessage, adapterToGame chan
 				// Read one message from the connection.
 				command, err := faStreamreader.ReadString()
 				if err != nil {
-					fmt.Println("Error parsing command:", conn.RemoteAddr())
+					fmt.Printf("error parsing command from %s: %v\n", conn.RemoteAddr(), err)
 					continue
 				}
 
 				chunks, err := faStreamreader.ReadChunks()
 				if err != nil {
-					fmt.Println("Error parsing arguments:", conn.RemoteAddr())
+					fmt.Printf("error parsing command from %s: %v", conn.RemoteAddr(), err)
 					continue
 				}
 

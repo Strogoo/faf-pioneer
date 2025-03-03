@@ -11,6 +11,12 @@ import (
 	"strings"
 )
 
+type GlobalChannels struct {
+	gpgNetFromGame chan *forgedalliance.GpgMessage
+	gpgNetToGame   chan *forgedalliance.GpgMessage
+	gameDataToGame chan *[]byte
+}
+
 func main() {
 	// Define flags without default values (not passing a value will cause an error)
 	userId := flag.Uint("user-id", 0, "The ID of the user")
@@ -18,6 +24,7 @@ func main() {
 	accessToken := flag.String("access-token", "", "The access token for authentication")
 	apiRoot := flag.String("api-root", "https://api.faforever.com/ice", "The root uri of the icebreaker api")
 	gpgNetPort := flag.Uint("gpgnet-port", 0, "The port which the game will connect to for exchanging GgpNet messages")
+	gameUdpPort := flag.Uint("game-udp-port", 0, "The port which the game will send/receive game data")
 
 	// Parse the command-line flags
 	flag.Parse()
@@ -41,10 +48,13 @@ func main() {
 
 	// Start the Gpgnet Control Server
 	gpgNetServer := forgedalliance.NewGpgNetServer(*gpgNetPort)
-	gpgNetFromGameChannel := make(chan *forgedalliance.GpgMessage)
-	adapterToGameChannel := make(chan *forgedalliance.GpgMessage)
+	globalChannels := GlobalChannels{
+		gpgNetFromGame: make(chan *forgedalliance.GpgMessage),
+		gpgNetToGame:   make(chan *forgedalliance.GpgMessage),
+		gameDataToGame: make(chan *[]byte),
+	}
 
-	go gpgNetServer.Listen(gpgNetFromGameChannel, adapterToGameChannel)
+	go gpgNetServer.Listen(globalChannels.gpgNetToGame, globalChannels.gpgNetToGame)
 
 	// Gather ICE servers and listen for WebRTC events
 	icebreakerClient := icebreaker.NewClient(*apiRoot, *gameId, *accessToken)
@@ -75,15 +85,14 @@ func main() {
 	// WebRTC setup
 	peers := make(map[uint]*webrtc.Peer)
 
-	var peerUdpPort uint16 = 18000 // TODO: Pick a "free random one"
-	var gameUdpPort uint16 = 19000 // TODO: Get via GpgNet from the game
+	var peerUdpPort uint = 18000 // TODO: Pick a "free random one"
 
 	for msg := range channel {
 		switch event := msg.(type) {
 		case *icebreaker.ConnectedMessage:
 			log.Printf("Connecting to peer: %s\n", event)
 
-			peer, err := webrtc.CreatePeer(true, event.SenderID, turnServer, peerUdpPort, gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
+			peer, err := webrtc.CreatePeer(true, event.SenderID, turnServer, peerUdpPort, *gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
 				err := icebreakerClient.SendEvent(
 					icebreaker.CandidatesMessage{
 						EventType:   "candidates",
@@ -109,7 +118,7 @@ func main() {
 			peer := peers[event.SenderID]
 
 			if peer == nil {
-				peer, err = webrtc.CreatePeer(false, event.SenderID, turnServer, peerUdpPort, gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
+				peer, err = webrtc.CreatePeer(false, event.SenderID, turnServer, peerUdpPort, *gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
 					err := icebreakerClient.SendEvent(
 						icebreaker.CandidatesMessage{
 							EventType:   "candidates",
@@ -129,6 +138,7 @@ func main() {
 				}
 
 				peers[event.SenderID] = peer
+				peerUdpPort++
 			}
 
 			err := peer.AddCandidates(event.Session, event.Candidates)

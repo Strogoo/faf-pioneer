@@ -17,10 +17,10 @@ type Peer struct {
 	offer                  *webrtc.SessionDescription
 	answer                 *webrtc.SessionDescription
 	pendingCandidates      []*webrtc.ICECandidate
-	gameToWebrtcUdpPort    uint16
+	gameToWebrtcUdpPort    uint
 	gameToIceUdpSocket     *net.PacketConn
 	gameToWebrtcChannel    chan []byte
-	webrtcToGameUdpPort    uint16
+	webrtcToGameUdpPort    uint
 	webrtcToGameChannel    chan []byte
 	candidatesMux          sync.Mutex
 	onCandidatesGathered   func(*webrtc.SessionDescription, []*webrtc.ICECandidate)
@@ -36,8 +36,8 @@ func CreatePeer(
 	offerer bool,
 	peerId uint,
 	iceServers []webrtc.ICEServer,
-	gameToWebrtcPort uint16,
-	webrtcToGamePort uint16,
+	gameToWebrtcPort uint,
+	webrtcToGamePort uint,
 	onCandidatesGathered func(*webrtc.SessionDescription, []*webrtc.ICECandidate)) (*Peer, error) {
 	var err error
 	peer := Peer{
