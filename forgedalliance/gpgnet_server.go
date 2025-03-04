@@ -3,6 +3,7 @@ package forgedalliance
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strconv"
@@ -43,20 +44,28 @@ func (s *GpgNetServer) Listen(gameToAdapter chan *GpgMessage, adapterToGame chan
 
 		// Wrap the connection in a buffered reader.
 		bufferReader := bufio.NewReader(conn)
-		faStreamreader := NewFaStreamReader(bufferReader)
+		faStreamReader := NewFaStreamReader(bufferReader)
 
 		go func() {
 			log.Println("Waiting for incoming GpgNet message")
 
 			for {
 				// Read one message from the connection.
-				command, err := faStreamreader.ReadString()
+				command, err := faStreamReader.ReadString()
+				if err == io.EOF {
+					fmt.Println("EOF reached, closing connection.")
+					return
+				}
 				if err != nil {
 					fmt.Printf("error parsing command from %s: %v\n", conn.RemoteAddr(), err)
 					continue
 				}
 
-				chunks, err := faStreamreader.ReadChunks()
+				chunks, err := faStreamReader.ReadChunks()
+				if err == io.EOF {
+					fmt.Println("EOF reached, closing connection.")
+					return
+				}
 				if err != nil {
 					fmt.Printf("error parsing command from %s: %v", conn.RemoteAddr(), err)
 					continue
@@ -68,6 +77,8 @@ func (s *GpgNetServer) Listen(gameToAdapter chan *GpgMessage, adapterToGame chan
 				}
 
 				parsedMsg := unparsedMsg.TryParse()
+
+				s.ProcessMessage(parsedMsg)
 
 				gameToAdapter <- &parsedMsg
 			}
@@ -88,4 +99,14 @@ func (s *GpgNetServer) Listen(gameToAdapter chan *GpgMessage, adapterToGame chan
 
 func (s *GpgNetServer) Close() {
 	(*s.tcpSocket).Close()
+}
+
+func (s *GpgNetServer) ProcessMessage(msg GpgMessage) {
+	switch msg := msg.(type) {
+	case *GameStateMessage:
+		log.Printf("Local GameState changed to %s\n", msg.State)
+		s.state = msg.State
+	default:
+		log.Printf("Message command %s ignored\n", msg.GetCommand())
+	}
 }

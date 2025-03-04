@@ -54,7 +54,7 @@ func main() {
 		gameDataToGame: make(chan *[]byte),
 	}
 
-	go gpgNetServer.Listen(globalChannels.gpgNetToGame, globalChannels.gpgNetToGame)
+	go gpgNetServer.Listen(globalChannels.gpgNetFromGame, globalChannels.gpgNetToGame)
 
 	// Gather ICE servers and listen for WebRTC events
 	icebreakerClient := icebreaker.NewClient(*apiRoot, *gameId, *accessToken)
@@ -113,6 +113,7 @@ func main() {
 			}
 
 			peers[event.SenderID] = peer
+			peerUdpPort++
 		case *icebreaker.CandidatesMessage:
 			fmt.Printf("Received CandidatesMessage: %s\n", event)
 			peer := peers[event.SenderID]
