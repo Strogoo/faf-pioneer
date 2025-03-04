@@ -78,9 +78,11 @@ func (s *GpgNetServer) Listen(gameToAdapter chan *GpgMessage, adapterToGame chan
 
 				parsedMsg := unparsedMsg.TryParse()
 
-				s.ProcessMessage(parsedMsg)
+				parsedMsg = *s.ProcessMessage(parsedMsg)
 
-				gameToAdapter <- &parsedMsg
+				if parsedMsg != nil {
+					gameToAdapter <- &parsedMsg
+				}
 			}
 		}()
 
@@ -101,7 +103,7 @@ func (s *GpgNetServer) Close() {
 	(*s.tcpSocket).Close()
 }
 
-func (s *GpgNetServer) ProcessMessage(msg GpgMessage) {
+func (s *GpgNetServer) ProcessMessage(msg GpgMessage) *GpgMessage {
 	switch msg := msg.(type) {
 	case *GameStateMessage:
 		log.Printf("Local GameState changed to %s\n", msg.State)
@@ -109,4 +111,6 @@ func (s *GpgNetServer) ProcessMessage(msg GpgMessage) {
 	default:
 		log.Printf("Message command %s ignored\n", msg.GetCommand())
 	}
+
+	return &msg
 }

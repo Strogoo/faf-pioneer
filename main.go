@@ -12,9 +12,11 @@ import (
 )
 
 type GlobalChannels struct {
-	gpgNetFromGame chan *forgedalliance.GpgMessage
-	gpgNetToGame   chan *forgedalliance.GpgMessage
-	gameDataToGame chan *[]byte
+	gpgNetFromGame      chan *forgedalliance.GpgMessage
+	gpgNetToGame        chan *forgedalliance.GpgMessage
+	gpgNetToFafClient   chan *forgedalliance.GpgMessage
+	gpgNetFromFafClient chan *forgedalliance.GpgMessage
+	gameDataToGame      chan *[]byte
 }
 
 func main() {
@@ -24,6 +26,7 @@ func main() {
 	accessToken := flag.String("access-token", "", "The access token for authentication")
 	apiRoot := flag.String("api-root", "https://api.faforever.com/ice", "The root uri of the icebreaker api")
 	gpgNetPort := flag.Uint("gpgnet-port", 0, "The port which the game will connect to for exchanging GgpNet messages")
+	gpgNetClientPort := flag.Uint("gpgnet-client-port", 0, "The port which on which the parent FAF client listens on")
 	gameUdpPort := flag.Uint("game-udp-port", 0, "The port which the game will send/receive game data")
 
 	// Parse the command-line flags
@@ -46,15 +49,34 @@ func main() {
 		log.Fatalf("Error: --gpgnet-port is required and cannot be empty.")
 	}
 
-	// Start the Gpgnet Control Server
-	gpgNetServer := forgedalliance.NewGpgNetServer(*gpgNetPort)
 	globalChannels := GlobalChannels{
-		gpgNetFromGame: make(chan *forgedalliance.GpgMessage),
-		gpgNetToGame:   make(chan *forgedalliance.GpgMessage),
-		gameDataToGame: make(chan *[]byte),
+		gpgNetFromGame:      make(chan *forgedalliance.GpgMessage),
+		gpgNetToGame:        make(chan *forgedalliance.GpgMessage),
+		gpgNetToFafClient:   make(chan *forgedalliance.GpgMessage),
+		gpgNetFromFafClient: make(chan *forgedalliance.GpgMessage),
+		gameDataToGame:      make(chan *[]byte),
 	}
 
+	// Wire GpgNetClient to GpgNetServer
+	go func() {
+		for msg := range globalChannels.gpgNetFromGame {
+			globalChannels.gpgNetToFafClient <- msg
+		}
+	}()
+
+	go func() {
+		for msg := range globalChannels.gpgNetFromFafClient {
+			globalChannels.gpgNetToGame <- msg
+		}
+	}()
+
+	// Start the Gpgnet Control Server
+	gpgNetServer := forgedalliance.NewGpgNetServer(*gpgNetPort)
 	go gpgNetServer.Listen(globalChannels.gpgNetFromGame, globalChannels.gpgNetToGame)
+
+	// Start the GpgNet client to proxy data to the FAF client
+	gpgNetClient := forgedalliance.NewGpgNetClient(*gpgNetClientPort)
+	go gpgNetClient.Listen(globalChannels.gpgNetToFafClient, globalChannels.gpgNetFromFafClient)
 
 	// Gather ICE servers and listen for WebRTC events
 	icebreakerClient := icebreaker.NewClient(*apiRoot, *gameId, *accessToken)
