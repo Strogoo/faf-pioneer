@@ -83,6 +83,9 @@ func CreatePeer(
 	}
 
 	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		peer.candidatesMux.Lock()
+		defer peer.candidatesMux.Unlock()
+
 		if candidate == nil {
 			var sessionDescription *webrtc.SessionDescription
 
@@ -95,9 +98,6 @@ func CreatePeer(
 			peer.onCandidatesGathered(sessionDescription, peer.pendingCandidates)
 			return
 		}
-
-		peer.candidatesMux.Lock()
-		defer peer.candidatesMux.Unlock()
 
 		peer.pendingCandidates = append(peer.pendingCandidates, candidate)
 	})
