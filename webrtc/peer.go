@@ -172,7 +172,7 @@ func (p *Peer) RegisterDataChannel() {
 	// Register channel opening handling
 	p.gameDataChannel.OnOpen(func() {
 		fmt.Printf(
-			"Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n",
+			"Data channel '%s'-'%d' open.\n",
 			p.gameDataChannel.Label(), p.gameDataChannel.ID(),
 		)
 
@@ -180,7 +180,7 @@ func (p *Peer) RegisterDataChannel() {
 			for {
 				err := p.gameDataChannel.Send(<-p.gameToWebrtcChannel)
 				if err != nil {
-					log.Printf("Could not send data from peer to game")
+					log.Printf("Could not send data from over WebRTC data channel: %v\n", err)
 				}
 			}
 		}()
