@@ -20,10 +20,7 @@ type BaseEvent struct {
 }
 
 type ConnectedMessage struct {
-	EventType   string `json:"eventType"`
-	GameID      uint64 `json:"gameId"`
-	SenderID    uint   `json:"senderId"`
-	RecipientID *uint  `json:"recipientId,omitempty"`
+	BaseEvent
 }
 
 func (e ConnectedMessage) String() string {
@@ -38,12 +35,9 @@ func (e ConnectedMessage) GetSenderId() uint     { return e.SenderID }
 func (e ConnectedMessage) GetRecipientId() *uint { return e.RecipientID }
 
 type CandidatesMessage struct {
-	EventType   string                     `json:"eventType"`
-	GameID      uint64                     `json:"gameId"`
-	SenderID    uint                       `json:"senderId"`
-	RecipientID *uint                      `json:"recipientId"`
-	Session     *webrtc.SessionDescription `json:"session"`
-	Candidates  []*webrtc.ICECandidate     `json:"candidates"`
+	BaseEvent
+	Session    *webrtc.SessionDescription `json:"session"`
+	Candidates []*webrtc.ICECandidate     `json:"candidates"`
 }
 
 func (e CandidatesMessage) String() string {

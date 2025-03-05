@@ -117,12 +117,14 @@ func main() {
 			peer, err := webrtc.CreatePeer(true, event.SenderID, turnServer, peerUdpPort, *gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
 				err := icebreakerClient.SendEvent(
 					icebreaker.CandidatesMessage{
-						EventType:   "candidates",
-						GameID:      *gameId,
-						SenderID:    *userId,
-						RecipientID: &event.SenderID,
-						Session:     description,
-						Candidates:  candidates,
+						BaseEvent: icebreaker.BaseEvent{
+							EventType:   "candidates",
+							GameID:      *gameId,
+							SenderID:    *userId,
+							RecipientID: &event.SenderID,
+						},
+						Session:    description,
+						Candidates: candidates,
 					})
 
 				if err != nil {
@@ -144,12 +146,14 @@ func main() {
 				peer, err = webrtc.CreatePeer(false, event.SenderID, turnServer, peerUdpPort, *gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
 					err := icebreakerClient.SendEvent(
 						icebreaker.CandidatesMessage{
-							EventType:   "candidates",
-							GameID:      *gameId,
-							SenderID:    *userId,
-							RecipientID: &event.SenderID,
-							Session:     description,
-							Candidates:  candidates,
+							BaseEvent: icebreaker.BaseEvent{
+								EventType:   "candidates",
+								GameID:      *gameId,
+								SenderID:    *userId,
+								RecipientID: &event.SenderID,
+							},
+							Session:    description,
+							Candidates: candidates,
 						})
 
 					if err != nil {
