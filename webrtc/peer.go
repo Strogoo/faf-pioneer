@@ -1,31 +1,26 @@
 package webrtc
 
 import (
+	"faf-pioneer/forgedalliance"
 	"fmt"
 	"github.com/pion/webrtc/v4"
 	"log"
-	"net"
-	"strconv"
 	"sync"
 )
 
 type Peer struct {
-	Offerer                bool
-	peerId                 uint
-	connection             *webrtc.PeerConnection
-	gameDataChannel        *webrtc.DataChannel
-	offer                  *webrtc.SessionDescription
-	answer                 *webrtc.SessionDescription
-	pendingCandidates      []*webrtc.ICECandidate
-	gameToWebrtcUdpPort    uint
-	gameToIceUdpSocket     *net.PacketConn
-	gameToWebrtcChannel    chan []byte
-	webrtcToGameUdpPort    uint
-	webrtcToGameChannel    chan []byte
-	candidatesMux          sync.Mutex
-	onCandidatesGathered   func(*webrtc.SessionDescription, []*webrtc.ICECandidate)
-	webRtcMessagesReceived uint32
-	gameMessagesReceived   uint32
+	Offerer              bool
+	peerId               uint
+	connection           *webrtc.PeerConnection
+	gameDataChannel      *webrtc.DataChannel
+	offer                *webrtc.SessionDescription
+	answer               *webrtc.SessionDescription
+	pendingCandidates    []*webrtc.ICECandidate
+	candidatesMux        sync.Mutex
+	onCandidatesGathered func(*webrtc.SessionDescription, []*webrtc.ICECandidate)
+	gameToWebrtcChannel  chan []byte
+	webrtcToGameChannel  chan []byte
+	gameDataProxy        *forgedalliance.GameUDPProxy
 }
 
 func (p *Peer) wrapError(format string, a ...any) error {
@@ -40,18 +35,25 @@ func CreatePeer(
 	webrtcToGamePort uint,
 	onCandidatesGathered func(*webrtc.SessionDescription, []*webrtc.ICECandidate)) (*Peer, error) {
 	var err error
+
+	gameToWebrtcChannel := make(chan []byte)
+	webrtcToGameChannel := make(chan []byte)
+
+	gameUdpProxy, err := forgedalliance.NewGameUDPProxy(
+		webrtcToGamePort, gameToWebrtcPort, gameToWebrtcChannel, webrtcToGameChannel,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	peer := Peer{
 		Offerer:              offerer,
 		peerId:               peerId,
-		gameToWebrtcUdpPort:  gameToWebrtcPort,
-		gameToWebrtcChannel:  make(chan []byte),
-		webrtcToGameUdpPort:  webrtcToGamePort,
-		webrtcToGameChannel:  make(chan []byte),
+		gameToWebrtcChannel:  gameToWebrtcChannel,
+		webrtcToGameChannel:  webrtcToGameChannel,
 		onCandidatesGathered: onCandidatesGathered,
+		gameDataProxy:        gameUdpProxy,
 	}
-
-	go peer.startUDPServer()
-	go peer.forwardWebRTCtoGame()
 
 	connection, err := webrtc.NewPeerConnection(webrtc.Configuration{ICEServers: iceServers})
 	if err != nil {
@@ -156,6 +158,7 @@ func (p *Peer) AddCandidates(session *webrtc.SessionDescription, candidates []*w
 }
 
 func (p *Peer) Close() error {
+	p.gameDataProxy.Close()
 	if err := p.connection.Close(); err != nil {
 		return p.wrapError("cannot close peerConnection: %v\n", err)
 	}
@@ -177,8 +180,8 @@ func (p *Peer) RegisterDataChannel() {
 		)
 
 		go func() {
-			for {
-				err := p.gameDataChannel.Send(<-p.gameToWebrtcChannel)
+			for msg := range p.gameToWebrtcChannel {
+				err := p.gameDataChannel.Send(msg)
 				if err != nil {
 					log.Printf("Could not send data from over WebRTC data channel: %v\n", err)
 				}
@@ -188,56 +191,6 @@ func (p *Peer) RegisterDataChannel() {
 
 	// Register text message handling
 	p.gameDataChannel.OnMessage(func(msg webrtc.DataChannelMessage) {
-		p.webRtcMessagesReceived++
 		p.webrtcToGameChannel <- msg.Data
 	})
-}
-
-func (p *Peer) startUDPServer() {
-	addr := "127.0.0.1:" + strconv.Itoa(int(p.gameToWebrtcUdpPort))
-	conn, err := net.ListenPacket("udp", addr)
-	if err != nil {
-		fmt.Println("Failed to start game UDP server:", err)
-		return
-	}
-	defer conn.Close()
-
-	log.Println("Listening for game UDP packets on", addr)
-
-	buf := make([]byte, 1500) // Max UDP packet size
-	for {
-		n, _, err := conn.ReadFrom(buf)
-		if err != nil {
-			fmt.Println("Error reading game UDP packet:", err)
-			continue
-		}
-
-		p.gameMessagesReceived++
-
-		// Copy the data into a new slice before sending to channel
-		packet := make([]byte, n)
-		copy(packet, buf[:n])
-
-		// Block and wait if necessary
-		p.gameToWebrtcChannel <- packet
-	}
-}
-
-func (p *Peer) forwardWebRTCtoGame() {
-	addr := "127.0.0.1:" + strconv.Itoa(int(p.webrtcToGameUdpPort))
-	conn, err := net.Dial("udp", addr)
-	if err != nil {
-		fmt.Println("Failed to connect to UDP server:", err)
-		return
-	}
-	defer conn.Close()
-
-	for msg := range p.webrtcToGameChannel {
-		_, err := conn.Write(msg)
-		if err != nil {
-			fmt.Println("Error sending UDP packet:", err)
-		} else {
-			fmt.Println("Sent:", string(msg))
-		}
-	}
 }
