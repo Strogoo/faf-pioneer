@@ -19,6 +19,7 @@ type PeerManager struct {
 }
 
 func NewPeerManager(
+	icebreakerClient *icebreaker.Client,
 	userId uint,
 	gameId uint64,
 	gameUdpPort uint,
@@ -28,6 +29,7 @@ func NewPeerManager(
 ) PeerManager {
 	peerManager := PeerManager{
 		peers:            make(map[uint]*Peer),
+		icebreakerClient: icebreakerClient,
 		icebreakerEvents: icebreakerEvents,
 		turnServer:       turnServer,
 		gameUdpPort:      gameUdpPort,

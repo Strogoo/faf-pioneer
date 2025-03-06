@@ -84,6 +84,7 @@ func Start(
 	var peerUdpPort uint = 18000 // TODO: Pick a "free random one"?
 
 	peerManager := webrtc.NewPeerManager(
+		&icebreakerClient,
 		userId,
 		gameId,
 		gameUdpPort,
