@@ -60,11 +60,12 @@ func (p *PeerManager) Start() {
 			peer := p.peers[event.SenderID]
 
 			if peer == nil {
-				peer, err := CreatePeer(false, event.SenderID, p.turnServer, p.nextPeerUdpPort, p.gameUdpPort, p.onCandidatesGathered(event.SenderID))
+				newPeer, err := CreatePeer(false, event.SenderID, p.turnServer, p.nextPeerUdpPort, p.gameUdpPort, p.onCandidatesGathered(event.SenderID))
 				if err != nil {
 					panic(err)
 				}
 
+				peer = newPeer
 				p.peers[event.SenderID] = peer
 				p.nextPeerUdpPort++
 			}
