@@ -28,6 +28,8 @@ func NewPeerManager(
 	icebreakerEvents <-chan icebreaker.EventMessage,
 ) PeerManager {
 	peerManager := PeerManager{
+		userId:           userId,
+		gameId:           gameId,
 		peers:            make(map[uint]*Peer),
 		icebreakerClient: icebreakerClient,
 		icebreakerEvents: icebreakerEvents,
