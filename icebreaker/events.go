@@ -37,7 +37,7 @@ func (e ConnectedMessage) GetRecipientId() *uint { return e.RecipientID }
 type CandidatesMessage struct {
 	BaseEvent
 	Session    *webrtc.SessionDescription `json:"session"`
-	Candidates []*webrtc.ICECandidate     `json:"candidates"`
+	Candidates []webrtc.ICECandidate      `json:"candidates"`
 }
 
 func (e CandidatesMessage) String() string {

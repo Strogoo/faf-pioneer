@@ -15,9 +15,9 @@ type Peer struct {
 	gameDataChannel      *webrtc.DataChannel
 	offer                *webrtc.SessionDescription
 	answer               *webrtc.SessionDescription
-	pendingCandidates    []*webrtc.ICECandidate
+	pendingCandidates    []webrtc.ICECandidate
 	candidatesMux        sync.Mutex
-	onCandidatesGathered func(*webrtc.SessionDescription, []*webrtc.ICECandidate)
+	onCandidatesGathered func(*webrtc.SessionDescription, []webrtc.ICECandidate)
 	gameToWebrtcChannel  chan []byte
 	webrtcToGameChannel  chan []byte
 	gameDataProxy        *forgedalliance.GameUDPProxy
@@ -33,7 +33,7 @@ func CreatePeer(
 	iceServers []webrtc.ICEServer,
 	gameToWebrtcPort uint,
 	webrtcToGamePort uint,
-	onCandidatesGathered func(*webrtc.SessionDescription, []*webrtc.ICECandidate)) (*Peer, error) {
+	onCandidatesGathered func(*webrtc.SessionDescription, []webrtc.ICECandidate)) (*Peer, error) {
 	var err error
 
 	gameToWebrtcChannel := make(chan []byte)
@@ -101,7 +101,7 @@ func CreatePeer(
 			return
 		}
 
-		peer.pendingCandidates = append(peer.pendingCandidates, candidate)
+		peer.pendingCandidates = append(peer.pendingCandidates, *candidate)
 	})
 
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
@@ -125,7 +125,7 @@ func CreatePeer(
 	return &peer, nil
 }
 
-func (p *Peer) AddCandidates(session *webrtc.SessionDescription, candidates []*webrtc.ICECandidate) error {
+func (p *Peer) AddCandidates(session *webrtc.SessionDescription, candidates []webrtc.ICECandidate) error {
 	p.answer = session
 
 	err := p.connection.SetRemoteDescription(*session)

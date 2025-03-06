@@ -7,7 +7,7 @@ import (
 )
 
 // This test starts the game and sends some mock lobby server messages to get it to initialize out of its blackscreen state
-func TestStandalone(t *testing.T) {
+func TestAdapter2Game(t *testing.T) {
 	gpgNetServer := NewGpgNetServer(21001)
 
 	gameToAdapter := make(chan *GpgMessage)

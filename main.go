@@ -1,23 +1,10 @@
 package main
 
 import (
-	"faf-pioneer/forgedalliance"
-	"faf-pioneer/icebreaker"
-	"faf-pioneer/webrtc"
+	"faf-pioneer/adapter"
 	"flag"
-	"fmt"
-	pionwebrtc "github.com/pion/webrtc/v4"
 	"log"
-	"strings"
 )
-
-type GlobalChannels struct {
-	gpgNetFromGame      chan *forgedalliance.GpgMessage
-	gpgNetToGame        chan *forgedalliance.GpgMessage
-	gpgNetToFafClient   chan *forgedalliance.GpgMessage
-	gpgNetFromFafClient chan *forgedalliance.GpgMessage
-	gameDataToGame      chan *[]byte
-}
 
 func main() {
 	// Define flags without default values (not passing a value will cause an error)
@@ -49,131 +36,13 @@ func main() {
 		log.Fatalf("Error: --gpgnet-port is required and cannot be empty.")
 	}
 
-	globalChannels := GlobalChannels{
-		gpgNetFromGame:      make(chan *forgedalliance.GpgMessage),
-		gpgNetToGame:        make(chan *forgedalliance.GpgMessage),
-		gpgNetToFafClient:   make(chan *forgedalliance.GpgMessage),
-		gpgNetFromFafClient: make(chan *forgedalliance.GpgMessage),
-		gameDataToGame:      make(chan *[]byte),
-	}
-
-	// Wire GpgNetClient to GpgNetServer
-	go func() {
-		for msg := range globalChannels.gpgNetFromGame {
-			globalChannels.gpgNetToFafClient <- msg
-		}
-	}()
-
-	go func() {
-		for msg := range globalChannels.gpgNetFromFafClient {
-			globalChannels.gpgNetToGame <- msg
-		}
-	}()
-
-	// Start the Gpgnet Control Server
-	gpgNetServer := forgedalliance.NewGpgNetServer(*gpgNetPort)
-	go gpgNetServer.Listen(globalChannels.gpgNetFromGame, globalChannels.gpgNetToGame)
-
-	// Start the GpgNet client to proxy data to the FAF client
-	gpgNetClient := forgedalliance.NewGpgNetClient(*gpgNetClientPort)
-	go gpgNetClient.Listen(globalChannels.gpgNetToFafClient, globalChannels.gpgNetFromFafClient)
-
-	// Gather ICE servers and listen for WebRTC events
-	icebreakerClient := icebreaker.NewClient(*apiRoot, *gameId, *accessToken)
-	sessionGameResponse, err := icebreakerClient.GetGameSession()
-
-	if err != nil {
-		log.Fatal("Could not query turn servers: ", err)
-	}
-
-	channel := make(chan icebreaker.EventMessage)
-	go icebreakerClient.Listen(channel)
-
-	turnServer := make([]pionwebrtc.ICEServer, len(sessionGameResponse.Servers))
-	for i, server := range sessionGameResponse.Servers {
-		turnServer[i] = pionwebrtc.ICEServer{
-			Username:       server.Username,
-			Credential:     server.Credential,
-			CredentialType: pionwebrtc.ICECredentialTypePassword,
-			URLs:           make([]string, len(server.Urls)),
-		}
-
-		for j, url := range server.Urls {
-			// for Java being Java reasons we unfortunately raped the URLs and need to convert it back
-			turnServer[i].URLs[j] = strings.ReplaceAll(url, "://", ":")
-		}
-	}
-
-	// WebRTC setup
-	peers := make(map[uint]*webrtc.Peer)
-
-	var peerUdpPort uint = 18000 // TODO: Pick a "free random one"
-
-	for msg := range channel {
-		switch event := msg.(type) {
-		case *icebreaker.ConnectedMessage:
-			log.Printf("Connecting to peer: %s\n", event)
-
-			peer, err := webrtc.CreatePeer(true, event.SenderID, turnServer, peerUdpPort, *gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
-				err := icebreakerClient.SendEvent(
-					icebreaker.CandidatesMessage{
-						BaseEvent: icebreaker.BaseEvent{
-							EventType:   "candidates",
-							GameID:      *gameId,
-							SenderID:    *userId,
-							RecipientID: &event.SenderID,
-						},
-						Session:    description,
-						Candidates: candidates,
-					})
-
-				if err != nil {
-					log.Printf("Failed to send candidates: %s\n", err)
-				}
-			})
-
-			if err != nil {
-				panic(err)
-			}
-
-			peers[event.SenderID] = peer
-			peerUdpPort++
-		case *icebreaker.CandidatesMessage:
-			fmt.Printf("Received CandidatesMessage: %s\n", event)
-			peer := peers[event.SenderID]
-
-			if peer == nil {
-				peer, err = webrtc.CreatePeer(false, event.SenderID, turnServer, peerUdpPort, *gameUdpPort, func(description *pionwebrtc.SessionDescription, candidates []*pionwebrtc.ICECandidate) {
-					err := icebreakerClient.SendEvent(
-						icebreaker.CandidatesMessage{
-							BaseEvent: icebreaker.BaseEvent{
-								EventType:   "candidates",
-								GameID:      *gameId,
-								SenderID:    *userId,
-								RecipientID: &event.SenderID,
-							},
-							Session:    description,
-							Candidates: candidates,
-						})
-
-					if err != nil {
-						log.Printf("Failed to send candidates: %s\n", err)
-					}
-				})
-				if err != nil {
-					panic(err)
-				}
-
-				peers[event.SenderID] = peer
-				peerUdpPort++
-			}
-
-			err := peer.AddCandidates(event.Session, event.Candidates)
-			if err != nil {
-				panic(err)
-			}
-		default:
-			fmt.Printf("Unknown event type: %s\n", event)
-		}
-	}
+	adapter.Start(
+		*userId,
+		*gameId,
+		*accessToken,
+		*apiRoot,
+		*gpgNetPort,
+		*gpgNetClientPort,
+		*gameUdpPort,
+	)
 }
