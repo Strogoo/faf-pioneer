@@ -16,7 +16,7 @@ But the GPGnet protocol can also be extended by SIM mods in the game since the m
 
 The game sends and receives GPGnet messages in a custom representation. The encoding is always Little Endian (but affects only uint32 fragments).
 
-Here is the specificationin Backus-Naur-Form:
+Here is the specification in Backus-Naur-Form:
 ```
 <message>              ::= <command> <size> <chunks>
 <command>              ::= <string>
@@ -30,14 +30,26 @@ Here is the specificationin Backus-Naur-Form:
 ```
 
 ## Known messages types
-* GameState
-* CreateLobby
-* HostGame
-* JoinGame
-* ConnectToPeer
-* DisconnectFromPeer
-* GameOptions
-* ... (?)
+
+| **command**        | **sent by** | **args** | **index** | **type** | **content**                                  |
+|--------------------|-------------|----------|-----------|----------|----------------------------------------------|
+| GameState          | game        | 1        | 0         | str      | state: [Idle,Lobby, ???]                     |
+| CreateLobby        | client      | 5        | 0         | int      | lobby init mode 0 = Normal / Custom 1 = Auto |
+|                    |             |          | 1         | int      | lobby port                                   |
+|                    |             |          | 2         | str      | local player name                            |
+|                    |             |          | 3         | int      | local player id                              |
+|                    |             |          | 4         | int      | unknown                                      |
+| HostGame           | client      | 1        | 0         | str      | map name                                     |
+| JoinGame           | client      | 3        | 0         | str      | net address                                  |
+|                    |             |          | 1         | str      | remote player name                           |
+|                    |             |          | 2         | int      | remote player id                             |
+| ConnectToPeer      | client      | 3        | 0         | str      | net address                                  |
+|                    |             |          | 1         | str      | remote player name                           |
+|                    |             |          | 2         | int      | remote player id                             |
+| DisconnectFromPeer | client      | 1        | 0         | int      | remote player id                             |
+| GameOptions        | both?       | ?        | ?         | ?        | ?                                            |
+| GameEndedMessage   | game        | 0        |           |          |                                              |
+
 
 ## Message flow for opening a lobby
 
