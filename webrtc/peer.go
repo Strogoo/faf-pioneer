@@ -1,6 +1,7 @@
 package webrtc
 
 import (
+	"encoding/json"
 	"faf-pioneer/forgedalliance"
 	"fmt"
 	"github.com/pion/webrtc/v4"
@@ -107,6 +108,41 @@ func CreatePeer(
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("Peer Connection State has changed %s \n", state.String())
 
+		if state == webrtc.PeerConnectionStateConnected {
+			var selectedCandidatePair webrtc.ICECandidatePairStats
+			candidates := make(map[string]webrtc.ICECandidateStats)
+
+			for k, s := range connection.GetStats() {
+				switch stat := s.(type) {
+				case webrtc.ICECandidateStats:
+					fmt.Println("ICECandidateStats:", k)
+					candidates[stat.ID] = stat
+				case webrtc.ICECandidatePairStats:
+					fmt.Println("ICECandidatePairStats:", k)
+					if stat.State == webrtc.StatsICECandidatePairStateSucceeded {
+						selectedCandidatePair = stat
+					}
+				default:
+				}
+			}
+
+			localCandidateJson, err := json.Marshal(candidates[selectedCandidatePair.LocalCandidateID])
+			if err != nil {
+				log.Println("Failed to serialize local candidate")
+			} else {
+				log.Printf("Local candidate: %s\n", localCandidateJson)
+			}
+
+			remoteCandidateJson, err := json.Marshal(candidates[selectedCandidatePair.RemoteCandidateID])
+			if err != nil {
+				log.Println("Failed to serialize remote candidate")
+			} else {
+				log.Printf("Remote candidate: %s\n", remoteCandidateJson)
+			}
+
+			log.Printf("LocalCandidate: %s\n", remoteCandidateJson)
+		}
+
 		if peer.Offerer {
 			log.Printf("You are offerer")
 		} else {
@@ -118,6 +154,7 @@ func CreatePeer(
 	connection.OnDataChannel(func(dataChannel *webrtc.DataChannel) {
 		peer.gameDataChannel = dataChannel
 		peer.RegisterDataChannel()
+		dataChannel.Transport()
 	})
 
 	peer.connection = connection

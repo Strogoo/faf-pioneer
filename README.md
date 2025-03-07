@@ -1,26 +1,61 @@
 # faf-pioneer
-FAF ICE Adapter based on WebRTC and the Pion library
+FAF ICE Adapter based on [WebRTC](https://webrtc.org/) and the [Pion project](https://github.com/pion).
+To understand the problem we are trying to solve, please check our [network architecture](docs/network_architecture.md).
+
+
+<details>
+
+<summary>FAF Pioneer application architecture</summary>
+
+![application-architecture.svg](docs/diagrams/application-architecture.svg)
+
+</details>
+
+#### Based on modern standards
+
+WebRTC is a specification to send and receive audio, video and any other data to be passed in a peer to peer setup with other users. It used by every modern audio/video conferencing software like Zoom, MS Teams, Google Meeet and many more.
+
+The Pion library is a first class implementation of the WebRTC spec. The faf-pioneer tries to establish connections between players via ICE (a protocol use by WebRTC) and sends the game data over "data channels".
+
+
+If you want to learn more about it, WebRTC has a is explained very thoroughly in [webrtcforthecurious.com](https://webrtcforthecurious.com/)
+
+## How to run & test
+
+**!!! This section is subject to change as we are still in a very early stage. !!!**
+
+The docker-compose.yaml provides you with all services you need to run & test this application.
+
+* The faf-icebreaker as our signalling server and turn server provider (along with MariaDB & RabbitMQ as dependencies)
+* Eturnal as a STUN and TURN server
+
+To setup everything just run
+
+```shell script
+docker compose up -d
+```
+This will start all services in the right order and with default configuration.
+
+Now you need to run the faf-pioneer on 2 pcs / VMs. Both need to be able to contact the faf-icebreaker application. You can expose the app via tools like Ngrok.
+
+So on local machine you run it via
+```shell script
+./run_test_as.sh 1
+```
+
+On the remote end you have to specify the icebreaker API. This is an example:
+````shell script
+API_ROOT=<ngrok-url>> ./run_test_as.sh 2
+````
+
+Now to receive data run netcat to listen on port 60000. To send data to the other side send it via netcat to localhost port 18ßßß.
+Always use UDP here! Also, dependening on your version, you might need to specify IPv4.
 
 ## Data flow
 
 There is a continuous data flow between this application, the Forged Alliance game, the FAF client and (obviously) the whole stack of these 3 applications on other players computers.
 
-### GpgNet Protocol rules
-A message in the GpgNet protocol is built up as followed:
-
-(Encoding of uint32 is always Little Endian)
-
-```
-<message>              ::= <command> <size> <chunks>
-<command>              ::= <string>
-<size>                 ::= uint32
-<string>               ::= <size> []byte
-<chunks>               ::= <chunk> | <chunk> <chunks>
-<chunk>                ::= <type_int> uint32 | <type_string> <string> | <type_followup_string> <string>
-<type_int>             ::= byte = 0x00
-<type_string>          ::= byte = 0x01
-<type_followup_string> ::= byte = 0x02
-```
+More details can be found in [GPGnet protocol docs](docs/gpgnet.md).
 
 ### Local launch order
 (Work in Progress)

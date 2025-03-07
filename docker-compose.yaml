@@ -1,0 +1,73 @@
+services:
+  mariadb:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: banana
+      MARIADB_DATABASE: faf-icebreaker
+      MARIADB_USER: faf-icebreaker
+      MARIADB_PASSWORD: banana
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    environment:
+      RABBITMQ_DEFAULT_VHOST: /faf-core
+      RABBITMQ_DEFAULT_USER: faf-icebreaker
+      RABBITMQ_DEFAULT_PASS: banana
+    ports:
+      - "5672:5672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  faf-icebreaker:
+    image: faforever/faf-icebreaker:1.1.0
+    ports:
+      - "8080:8080"
+    environment:
+      QUARKUS_PROFILE: dev
+      DB_URL: jdbc:mariadb://mariadb:3306/faf-icebreaker?ssl=false
+      RABBITMQ_HOST: rabbitmq
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "http://localhost:8080/q/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  eturnal:
+    image: ghcr.io/processone/eturnal:1.12.1
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "50000-50500:50000-50500/udp"
+    environment:
+      ETURNAL_RELAY_MIN_PORT: 50000
+      ETURNAL_RELAY_MAX_PORT: 50500
+      ETURNAL_SECRET: "banana"
+
+  # Idempotent INSERT of the eturnal service above into the faf-icebreaker db
+  eturnal-entry-in-icebreaker:
+    image: mariadb:11
+    entrypoint:
+      - sh
+      - -c
+      - >
+        mariadb -h mariadb -uroot -pbanana -D faf-icebreaker -e 
+        "INSERT IGNORE INTO coturn_servers (id, region, host, stun_port, turn_udp_port, turn_tcp_port, turns_tcp_port, preshared_key, contact_email, active) 
+        VALUES (1, 'localhost', '127.0.0.1', 3478, 3478, 3478, null, 'banana', 'admin@faforever.com', 1);"
+    depends_on:
+      faf-icebreaker:
+        condition: service_healthy
