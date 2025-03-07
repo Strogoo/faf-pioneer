@@ -112,13 +112,11 @@ func CreatePeer(
 			var selectedCandidatePair webrtc.ICECandidatePairStats
 			candidates := make(map[string]webrtc.ICECandidateStats)
 
-			for k, s := range connection.GetStats() {
+			for _, s := range connection.GetStats() {
 				switch stat := s.(type) {
 				case webrtc.ICECandidateStats:
-					fmt.Println("ICECandidateStats:", k)
 					candidates[stat.ID] = stat
 				case webrtc.ICECandidatePairStats:
-					fmt.Println("ICECandidatePairStats:", k)
 					if stat.State == webrtc.StatsICECandidatePairStateSucceeded {
 						selectedCandidatePair = stat
 					}
@@ -139,8 +137,6 @@ func CreatePeer(
 			} else {
 				log.Printf("Remote candidate: %s\n", remoteCandidateJson)
 			}
-
-			log.Printf("LocalCandidate: %s\n", remoteCandidateJson)
 		}
 
 		if peer.Offerer {
