@@ -47,14 +47,6 @@ func Start(
 		}
 	}()
 
-	// Start the Gpgnet Control Server
-	gpgNetServer := forgedalliance.NewGpgNetServer(gpgNetPort)
-	go gpgNetServer.Listen(globalChannels.gpgNetFromGame, globalChannels.gpgNetToGame)
-
-	// Start the GpgNet client to proxy data to the FAF client
-	gpgNetClient := forgedalliance.NewGpgNetClient(gpgNetClientPort)
-	go gpgNetClient.Listen(globalChannels.gpgNetToFafClient, globalChannels.gpgNetFromFafClient)
-
 	// Gather ICE servers and listen for WebRTC events
 	icebreakerClient := icebreaker.NewClient(apiRoot, gameId, accessToken)
 	sessionGameResponse, err := icebreakerClient.GetGameSession()
@@ -94,4 +86,12 @@ func Start(
 	)
 
 	peerManager.Start()
+
+	// Start the Gpgnet Control Server
+	gpgNetServer := forgedalliance.NewGpgNetServer(&peerManager, gpgNetPort)
+	go gpgNetServer.Listen(globalChannels.gpgNetFromGame, globalChannels.gpgNetToGame)
+
+	// Start the GpgNet client to proxy data to the FAF client
+	gpgNetClient := forgedalliance.NewGpgNetClient(gpgNetClientPort)
+	go gpgNetClient.Listen(globalChannels.gpgNetToFafClient, globalChannels.gpgNetFromFafClient)
 }

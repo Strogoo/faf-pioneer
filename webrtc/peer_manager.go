@@ -46,28 +46,13 @@ func (p *PeerManager) Start() {
 		switch event := msg.(type) {
 		case *icebreaker.ConnectedMessage:
 			log.Printf("Connecting to peer: %s\n", event)
-
-			peer, err := CreatePeer(true, event.SenderID, p.turnServer, p.nextPeerUdpPort, p.gameUdpPort, p.onCandidatesGathered(event.SenderID))
-
-			if err != nil {
-				panic(err)
-			}
-
-			p.peers[event.SenderID] = peer
-			p.nextPeerUdpPort++
+			p.AddPeerIfMissing(event.SenderID)
 		case *icebreaker.CandidatesMessage:
 			fmt.Printf("Received CandidatesMessage: %s\n", event)
 			peer := p.peers[event.SenderID]
 
 			if peer == nil {
-				newPeer, err := CreatePeer(false, event.SenderID, p.turnServer, p.nextPeerUdpPort, p.gameUdpPort, p.onCandidatesGathered(event.SenderID))
-				if err != nil {
-					panic(err)
-				}
-
-				peer = newPeer
-				p.peers[event.SenderID] = peer
-				p.nextPeerUdpPort++
+				peer = p.AddPeerIfMissing(event.SenderID)
 			}
 
 			err := peer.AddCandidates(event.Session, event.Candidates)
@@ -79,6 +64,27 @@ func (p *PeerManager) Start() {
 		}
 
 	}
+}
+
+func (p *PeerManager) AddPeerIfMissing(playerId uint) *Peer {
+	if p.peers[playerId] != nil {
+		log.Printf("Peer %d already exists\n", playerId)
+		// TODO: What if peer exists but was disconnected already?
+		return p.peers[playerId]
+	}
+
+	log.Printf("Creating peer %d\n", playerId)
+
+	// The smaller user id is always the offerer
+	newPeer, err := CreatePeer(p.userId < playerId, playerId, p.turnServer, p.nextPeerUdpPort, p.gameUdpPort, p.onCandidatesGathered(playerId))
+	if err != nil {
+		panic(err)
+	}
+
+	p.peers[playerId] = newPeer
+	p.nextPeerUdpPort++
+
+	return newPeer
 }
 
 func (p *PeerManager) onCandidatesGathered(remotePeer uint) func(*pionwebrtc.SessionDescription, []pionwebrtc.ICECandidate) {

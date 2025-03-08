@@ -1,6 +1,8 @@
 package forgedalliance
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type MessageType string
 
@@ -55,7 +57,7 @@ func (m *HostGameMessage) GetArgs() []interface{} {
 type JoinGameMessage struct {
 	Command           string
 	RemotePlayerLogin string
-	RemotePlayerId    uint32
+	RemotePlayerId    uint
 	Destination       string
 }
 
@@ -70,7 +72,7 @@ func (m *JoinGameMessage) GetArgs() []interface{} {
 type ConnectToPeerMessage struct {
 	Command           string
 	RemotePlayerLogin string
-	RemotePlayerId    uint32
+	RemotePlayerId    uint
 	Destination       string
 }
 
@@ -84,7 +86,7 @@ func (m *ConnectToPeerMessage) GetArgs() []interface{} {
 
 type DisconnectFromPeerMessage struct {
 	Command        string
-	RemotePlayerId uint32
+	RemotePlayerId uint
 }
 
 func (m *DisconnectFromPeerMessage) GetCommand() string {
@@ -157,7 +159,7 @@ func (m *GenericGpgMessage) TryParse() GpgMessage {
 		return &JoinGameMessage{
 			Command:           m.Command,
 			RemotePlayerLogin: m.Args[1].(string),
-			RemotePlayerId:    m.Args[2].(uint32),
+			RemotePlayerId:    m.Args[2].(uint),
 			Destination:       m.Args[0].(string),
 		}
 	case "ConnectToPeer":
@@ -169,7 +171,7 @@ func (m *GenericGpgMessage) TryParse() GpgMessage {
 		return &ConnectToPeerMessage{
 			Command:           m.Command,
 			RemotePlayerLogin: m.Args[1].(string),
-			RemotePlayerId:    m.Args[2].(uint32),
+			RemotePlayerId:    m.Args[2].(uint),
 			Destination:       m.Args[0].(string),
 		}
 	case "DisconnectFromPeer":
@@ -180,7 +182,7 @@ func (m *GenericGpgMessage) TryParse() GpgMessage {
 
 		return &DisconnectFromPeerMessage{
 			Command:        m.Command,
-			RemotePlayerId: m.Args[0].(uint32),
+			RemotePlayerId: m.Args[0].(uint),
 		}
 	case "GameState":
 		if len(m.Args) < 1 {

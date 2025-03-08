@@ -2,7 +2,7 @@ package webrtc
 
 import (
 	"encoding/json"
-	"faf-pioneer/forgedalliance"
+	"faf-pioneer/util"
 	"fmt"
 	"github.com/pion/webrtc/v4"
 	"log"
@@ -21,7 +21,7 @@ type Peer struct {
 	onCandidatesGathered func(*webrtc.SessionDescription, []webrtc.ICECandidate)
 	gameToWebrtcChannel  chan []byte
 	webrtcToGameChannel  chan []byte
-	gameDataProxy        *forgedalliance.GameUDPProxy
+	gameDataProxy        *util.GameUDPProxy
 }
 
 func (p *Peer) wrapError(format string, a ...any) error {
@@ -40,7 +40,7 @@ func CreatePeer(
 	gameToWebrtcChannel := make(chan []byte)
 	webrtcToGameChannel := make(chan []byte)
 
-	gameUdpProxy, err := forgedalliance.NewGameUDPProxy(
+	gameUdpProxy, err := util.NewGameUDPProxy(
 		webrtcToGamePort, gameToWebrtcPort, gameToWebrtcChannel, webrtcToGameChannel,
 	)
 	if err != nil {

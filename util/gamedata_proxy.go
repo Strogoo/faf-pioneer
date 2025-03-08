@@ -1,4 +1,4 @@
-package forgedalliance
+package util
 
 import (
 	"fmt"

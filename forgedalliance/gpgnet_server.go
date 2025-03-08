@@ -2,6 +2,7 @@ package forgedalliance
 
 import (
 	"bufio"
+	"faf-pioneer/webrtc"
 	"fmt"
 	"io"
 	"log"
@@ -10,16 +11,18 @@ import (
 )
 
 type GpgNetServer struct {
+	peerManager *webrtc.PeerManager
 	port        uint
 	tcpSocket   *net.Listener
 	currentConn *net.Conn
 	state       string
 }
 
-func NewGpgNetServer(port uint) *GpgNetServer {
+func NewGpgNetServer(peerManager *webrtc.PeerManager, port uint) *GpgNetServer {
 	return &GpgNetServer{
-		port:  port,
-		state: "disconnected",
+		peerManager: peerManager,
+		port:        port,
+		state:       "disconnected",
 	}
 }
 
@@ -108,6 +111,31 @@ func (s *GpgNetServer) ProcessMessage(msg GpgMessage) *GpgMessage {
 	case *GameStateMessage:
 		log.Printf("Local GameState changed to %s\n", msg.State)
 		s.state = msg.State
+		break
+	case *JoinGameMessage:
+		log.Printf("Joining game (swapping the address/port)\n")
+		s.peerManager.AddPeerIfMissing(msg.RemotePlayerId)
+
+		mappedAddress := JoinGameMessage{
+			Command:           msg.Command,
+			RemotePlayerLogin: msg.RemotePlayerLogin,
+			RemotePlayerId:    msg.RemotePlayerId,
+			Destination:       "127.0.0.1:" + strconv.Itoa(int(s.port)),
+		}
+		var mappedMsg GpgMessage = &mappedAddress
+		return &mappedMsg
+	case *ConnectToPeerMessage:
+		log.Printf("Connecting to peer (swapping the address/port)\n")
+		s.peerManager.AddPeerIfMissing(msg.RemotePlayerId)
+
+		mappedAddress := ConnectToPeerMessage{
+			Command:           msg.Command,
+			RemotePlayerLogin: msg.RemotePlayerLogin,
+			RemotePlayerId:    msg.RemotePlayerId,
+			Destination:       "127.0.0.1:" + strconv.Itoa(int(s.port)),
+		}
+		var mappedMsg GpgMessage = &mappedAddress
+		return &mappedMsg
 	default:
 		log.Printf("Message command %s ignored\n", msg.GetCommand())
 	}
