@@ -1,14 +1,33 @@
 package forgedalliance
 
 import (
+	"faf-pioneer/webrtc"
 	"fmt"
 	"log"
 	"testing"
 )
 
+type MockPeerHandler struct{}
+type MockPeer struct {
+	playerId uint
+}
+
+func (*MockPeer) IsOfferer() bool {
+	return false
+}
+
+func (p *MockPeer) PeerId() uint {
+	return p.playerId
+}
+
+func (p *MockPeerHandler) AddPeerIfMissing(playerId uint) webrtc.PeerMeta {
+	log.Printf("AddPeerIfMissing: playerId=%d", playerId)
+	return &MockPeer{playerId: playerId}
+}
+
 // This test starts the game and sends some mock lobby server messages to get it to initialize out of its blackscreen state
 func TestAdapter2Game(t *testing.T) {
-	gpgNetServer := NewGpgNetServer(21001)
+	gpgNetServer := NewGpgNetServer(&MockPeerHandler{}, 21001)
 
 	gameToAdapter := make(chan *GpgMessage)
 	adapterToGame := make(chan *GpgMessage)

@@ -10,17 +10,21 @@ import (
 	"strconv"
 )
 
+type Peer interface {
+	IsOfferer() bool
+}
+
 type GpgNetServer struct {
-	peerManager *webrtc.PeerManager
+	peerHandler webrtc.PeerHandler
 	port        uint
 	tcpSocket   *net.Listener
 	currentConn *net.Conn
 	state       string
 }
 
-func NewGpgNetServer(peerManager *webrtc.PeerManager, port uint) *GpgNetServer {
+func NewGpgNetServer(peerManager webrtc.PeerHandler, port uint) *GpgNetServer {
 	return &GpgNetServer{
-		peerManager: peerManager,
+		peerHandler: peerManager,
 		port:        port,
 		state:       "disconnected",
 	}
@@ -114,7 +118,7 @@ func (s *GpgNetServer) ProcessMessage(msg GpgMessage) *GpgMessage {
 		break
 	case *JoinGameMessage:
 		log.Printf("Joining game (swapping the address/port)\n")
-		s.peerManager.AddPeerIfMissing(msg.RemotePlayerId)
+		s.peerHandler.AddPeerIfMissing(msg.RemotePlayerId)
 
 		mappedAddress := JoinGameMessage{
 			Command:           msg.Command,
@@ -126,7 +130,7 @@ func (s *GpgNetServer) ProcessMessage(msg GpgMessage) *GpgMessage {
 		return &mappedMsg
 	case *ConnectToPeerMessage:
 		log.Printf("Connecting to peer (swapping the address/port)\n")
-		s.peerManager.AddPeerIfMissing(msg.RemotePlayerId)
+		s.peerHandler.AddPeerIfMissing(msg.RemotePlayerId)
 
 		mappedAddress := ConnectToPeerMessage{
 			Command:           msg.Command,

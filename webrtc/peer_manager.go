@@ -7,6 +7,10 @@ import (
 	"log"
 )
 
+type PeerHandler interface {
+	AddPeerIfMissing(playerId uint) PeerMeta
+}
+
 type PeerManager struct {
 	userId           uint
 	gameId           uint64
@@ -46,13 +50,13 @@ func (p *PeerManager) Start() {
 		switch event := msg.(type) {
 		case *icebreaker.ConnectedMessage:
 			log.Printf("Connecting to peer: %s\n", event)
-			p.AddPeerIfMissing(event.SenderID)
+			p.addPeerIfMissing(event.SenderID)
 		case *icebreaker.CandidatesMessage:
 			fmt.Printf("Received CandidatesMessage: %s\n", event)
 			peer := p.peers[event.SenderID]
 
 			if peer == nil {
-				peer = p.AddPeerIfMissing(event.SenderID)
+				peer = p.addPeerIfMissing(event.SenderID)
 			}
 
 			err := peer.AddCandidates(event.Session, event.Candidates)
@@ -66,7 +70,11 @@ func (p *PeerManager) Start() {
 	}
 }
 
-func (p *PeerManager) AddPeerIfMissing(playerId uint) *Peer {
+func (p *PeerManager) AddPeerIfMissing(playerId uint) PeerMeta {
+	return p.addPeerIfMissing(playerId)
+}
+
+func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 	if p.peers[playerId] != nil {
 		log.Printf("Peer %d already exists\n", playerId)
 		// TODO: What if peer exists but was disconnected already?

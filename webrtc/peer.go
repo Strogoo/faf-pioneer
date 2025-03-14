@@ -9,8 +9,13 @@ import (
 	"sync"
 )
 
+type PeerMeta interface {
+	IsOfferer() bool
+	PeerId() uint
+}
+
 type Peer struct {
-	Offerer              bool
+	offerer              bool
 	peerId               uint
 	connection           *webrtc.PeerConnection
 	gameDataChannel      *webrtc.DataChannel
@@ -22,6 +27,14 @@ type Peer struct {
 	gameToWebrtcChannel  chan []byte
 	webrtcToGameChannel  chan []byte
 	gameDataProxy        *util.GameUDPProxy
+}
+
+func (p *Peer) IsOfferer() bool {
+	return p.offerer
+}
+
+func (p *Peer) PeerId() uint {
+	return p.peerId
 }
 
 func (p *Peer) wrapError(format string, a ...any) error {
@@ -48,7 +61,7 @@ func CreatePeer(
 	}
 
 	peer := Peer{
-		Offerer:              offerer,
+		offerer:              offerer,
 		peerId:               peerId,
 		gameToWebrtcChannel:  gameToWebrtcChannel,
 		webrtcToGameChannel:  webrtcToGameChannel,
@@ -92,7 +105,7 @@ func CreatePeer(
 		if candidate == nil {
 			var sessionDescription *webrtc.SessionDescription
 
-			if peer.Offerer {
+			if peer.offerer {
 				sessionDescription = peer.offer
 			} else {
 				sessionDescription = peer.answer
@@ -139,7 +152,7 @@ func CreatePeer(
 			}
 		}
 
-		if peer.Offerer {
+		if peer.offerer {
 			log.Printf("You are offerer")
 		} else {
 			log.Printf("You are answerer")
@@ -173,7 +186,7 @@ func (p *Peer) AddCandidates(session *webrtc.SessionDescription, candidates []we
 		}
 	}
 
-	if !p.Offerer {
+	if !p.offerer {
 		answer, err := p.connection.CreateAnswer(nil)
 		if err != nil {
 			panic(err)
