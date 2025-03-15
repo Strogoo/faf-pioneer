@@ -6,9 +6,12 @@ import (
 	"faf-pioneer/util"
 	"faf-pioneer/webrtc"
 	pionwebrtc "github.com/pion/webrtc/v4"
+	"github.com/samber/slog-multi"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type GlobalChannels struct {
@@ -28,11 +31,10 @@ func Start(
 	gpgNetClientPort uint,
 	gameUdpPort uint,
 ) {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With(
-		"userId", userId,
-		"gameId", gameId,
-	)
-	slog.SetDefault(logger)
+	logFile := openLogFileOrCrash(userId, gameId)
+	defer logFile.Close()
+
+	initLogger(userId, gameId, logFile)
 
 	globalChannels := GlobalChannels{
 		gpgNetFromGame:      make(chan *forgedalliance.GpgMessage),
@@ -103,4 +105,34 @@ func Start(
 	// Start the GpgNet client to proxy data to the FAF client
 	gpgNetClient := forgedalliance.NewGpgNetClient(gpgNetClientPort)
 	go gpgNetClient.Listen(globalChannels.gpgNetToFafClient, globalChannels.gpgNetFromFafClient)
+}
+
+func initLogger(userId uint, gameId uint64, logFile *os.File) {
+	// Create console and file handlers
+	consoleHandler := slog.NewJSONHandler(os.Stdout, nil)
+	fileHandler := slog.NewJSONHandler(logFile, nil)
+
+	// Use slog-multi to log to both handlers
+	multiHandler := slogmulti.Fanout(consoleHandler, fileHandler)
+
+	logger := slog.New(multiHandler).With(
+		"userId", userId,
+		"gameId", gameId,
+	)
+	slog.SetDefault(logger)
+}
+
+func openLogFileOrCrash(userId uint, gameId uint64) *os.File {
+	// Generate a unique log filename using timestamp
+	logFilename := "Game_" + strconv.FormatUint(gameId, 10) +
+		"_User_" + strconv.Itoa(int(userId)) + "_" +
+		time.Now().Format("2006-01-02_15-04-05") + ".log"
+
+	// Open file for logging
+	logFile, err := os.OpenFile(logFilename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		slog.Error("Failed to open log file", util.ErrorAttr(err))
+		os.Exit(1)
+	}
+	return logFile
 }
