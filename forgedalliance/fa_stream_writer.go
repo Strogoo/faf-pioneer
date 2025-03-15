@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 )
 
@@ -16,7 +16,7 @@ type FaStreamWriter struct {
 
 // NewFaStreamWriter creates a new writer for the given output stream.
 func NewFaStreamWriter(w *bufio.Writer) *FaStreamWriter {
-	log.Println("FaStreamWriter opened")
+	slog.Debug("FaStreamWriter opened")
 	return &FaStreamWriter{
 		w: w,
 	}
@@ -75,7 +75,7 @@ func (w *FaStreamWriter) WriteMessage(gpgnetMessage GpgMessage) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	log.Printf("Writing message: %v\n", gpgnetMessage)
+	slog.Debug("Writing message to FA stream", slog.Any("message", gpgnetMessage))
 
 	if err := w.writeString(gpgnetMessage.GetCommand()); err != nil {
 		return err
@@ -89,7 +89,7 @@ func (w *FaStreamWriter) WriteMessage(gpgnetMessage GpgMessage) error {
 
 // Close closes the FaStreamWriter.
 func (w *FaStreamWriter) Close() error {
-	log.Println("Closing FaStreamWriter")
+	slog.Debug("Closing FaStreamWriter")
 	return w.w.Flush()
 }
 

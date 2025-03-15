@@ -2,10 +2,10 @@ package forgedalliance
 
 import (
 	"bufio"
+	"faf-pioneer/util"
 	"faf-pioneer/webrtc"
-	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"strconv"
 )
@@ -41,41 +41,47 @@ func (s *GpgNetServer) Listen(gameToAdapter chan<- *GpgMessage, adapterToGame ch
 	for {
 		conn, err := tcpSocket.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection:", err)
+			slog.Error("Error accepting GpgNet connection:", util.ErrorAttr(err))
 			continue
 		}
 
 		s.currentConn = &conn
 
-		fmt.Println("New client connected:", conn.RemoteAddr())
+		slog.Info("New GpgNet client connected", slog.Any("remoteAddress", conn.RemoteAddr()))
 
 		// Wrap the connection in a buffered reader.
 		bufferReader := bufio.NewReader(conn)
 		faStreamReader := NewFaStreamReader(bufferReader)
 
 		go func() {
-			log.Println("Waiting for incoming GpgNet message")
+			slog.Info("Waiting for incoming GpgNet messages from game")
 
 			for {
 				// Read one message from the connection.
 				command, err := faStreamReader.ReadString()
 				if err == io.EOF {
-					fmt.Println("EOF reached, closing connection.")
+					slog.Info("Closing GpgNet connection from game (EOF reached)")
 					return
 				}
 				if err != nil {
-					fmt.Printf("error parsing command from %s: %v\n", conn.RemoteAddr(), err)
-					continue
+					slog.Error("Error parsing GpgNet command from game, closing connection",
+						slog.Any("remoteAddress", conn.RemoteAddr()),
+						util.ErrorAttr(err),
+					)
+					return
 				}
 
 				chunks, err := faStreamReader.ReadChunks()
 				if err == io.EOF {
-					fmt.Println("EOF reached, closing connection.")
+					slog.Info("Closing GpgNet connection from game (EOF reached)")
 					return
 				}
 				if err != nil {
-					fmt.Printf("error parsing command from %s: %v", conn.RemoteAddr(), err)
-					continue
+					slog.Error("Error parsing GpgNet command from game, closing connection",
+						slog.Any("remoteAddress", conn.RemoteAddr()),
+						util.ErrorAttr(err),
+					)
+					return
 				}
 
 				unparsedMsg := GenericGpgMessage{
@@ -97,7 +103,7 @@ func (s *GpgNetServer) Listen(gameToAdapter chan<- *GpgMessage, adapterToGame ch
 			bufferedWriter := bufio.NewWriter(conn)
 			faStreamWriter := NewFaStreamWriter(bufferedWriter)
 
-			log.Println("Waiting for GpgNet messages to be sent")
+			slog.Info("Waiting for GpgNet messages to be forwarded to the game")
 
 			for msg := range adapterToGame {
 				faStreamWriter.WriteMessage(*msg)
@@ -113,11 +119,11 @@ func (s *GpgNetServer) Close() error {
 func (s *GpgNetServer) ProcessMessage(msg GpgMessage) *GpgMessage {
 	switch msg := msg.(type) {
 	case *GameStateMessage:
-		log.Printf("Local GameState changed to %s\n", msg.State)
+		slog.Info("Local GameState changed", slog.String("state", msg.State))
 		s.state = msg.State
 		break
 	case *JoinGameMessage:
-		log.Printf("Joining game (swapping the address/port)\n")
+		slog.Info("Joining game (swapping the address/port)")
 		s.peerHandler.AddPeerIfMissing(msg.RemotePlayerId)
 
 		mappedAddress := JoinGameMessage{
@@ -129,7 +135,7 @@ func (s *GpgNetServer) ProcessMessage(msg GpgMessage) *GpgMessage {
 		var mappedMsg GpgMessage = &mappedAddress
 		return &mappedMsg
 	case *ConnectToPeerMessage:
-		log.Printf("Connecting to peer (swapping the address/port)\n")
+		slog.Info("Connecting to peer (swapping the address/port)")
 		s.peerHandler.AddPeerIfMissing(msg.RemotePlayerId)
 
 		mappedAddress := ConnectToPeerMessage{
@@ -141,7 +147,7 @@ func (s *GpgNetServer) ProcessMessage(msg GpgMessage) *GpgMessage {
 		var mappedMsg GpgMessage = &mappedAddress
 		return &mappedMsg
 	default:
-		log.Printf("Message command %s ignored\n", msg.GetCommand())
+		slog.Debug("Message command ignored", slog.String("command", msg.GetCommand()))
 	}
 
 	return &msg

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log/slog"
 )
 
 // FaStreamReader wraps an io.Reader for our binary protocol.
@@ -14,6 +15,7 @@ type FaStreamReader struct {
 // NewFaStreamReader wraps the given reader.
 // You can pass a bufio.Reader here if desired.
 func NewFaStreamReader(r io.Reader) *FaStreamReader {
+	slog.Debug("NewFaStreamReader opened")
 	return &FaStreamReader{r: r}
 }
 

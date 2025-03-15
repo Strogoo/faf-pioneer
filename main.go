@@ -3,7 +3,8 @@ package main
 import (
 	"faf-pioneer/adapter"
 	"flag"
-	"log"
+	"log/slog"
+	"os"
 )
 
 func main() {
@@ -21,19 +22,23 @@ func main() {
 
 	// Validate that the required flags are provided
 	if *userId == 0 {
-		log.Fatalf("Error: --user-id is required and must be a valid uint32.")
+		slog.Error("Error: --user-id is required and must be a valid uint32.")
+		os.Exit(1)
 	}
 
 	if *gameId == 0 {
-		log.Fatalf("Error: --game-id is required and must be a valid uint64.")
+		slog.Error("Error: --game-id is required and must be a valid uint64.")
+		os.Exit(1)
 	}
 
 	if *accessToken == "" {
-		log.Fatalf("Error: --access-token is required and cannot be empty.")
+		slog.Error("Error: --access-token is required and cannot be empty.")
+		os.Exit(1)
 	}
 
 	if *gpgNetPort == 0 {
-		log.Fatalf("Error: --gpgnet-port is required and cannot be empty.")
+		slog.Error("Error: --gpgnet-port is required and cannot be empty.")
+		os.Exit(1)
 	}
 
 	adapter.Start(

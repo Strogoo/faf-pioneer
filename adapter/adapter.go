@@ -3,9 +3,11 @@ package adapter
 import (
 	"faf-pioneer/forgedalliance"
 	"faf-pioneer/icebreaker"
+	"faf-pioneer/util"
 	"faf-pioneer/webrtc"
 	pionwebrtc "github.com/pion/webrtc/v4"
-	"log"
+	"log/slog"
+	"os"
 	"strings"
 )
 
@@ -26,6 +28,12 @@ func Start(
 	gpgNetClientPort uint,
 	gameUdpPort uint,
 ) {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With(
+		"userId", userId,
+		"gameId", gameId,
+	)
+	slog.SetDefault(logger)
+
 	globalChannels := GlobalChannels{
 		gpgNetFromGame:      make(chan *forgedalliance.GpgMessage),
 		gpgNetToGame:        make(chan *forgedalliance.GpgMessage),
@@ -52,7 +60,8 @@ func Start(
 	sessionGameResponse, err := icebreakerClient.GetGameSession()
 
 	if err != nil {
-		log.Fatal("Could not query turn servers: ", err)
+		slog.Error("Could not query turn servers", util.ErrorAttr(err))
+		os.Exit(1)
 	}
 
 	channel := make(chan icebreaker.EventMessage)

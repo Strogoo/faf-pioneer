@@ -2,9 +2,10 @@ package forgedalliance
 
 import (
 	"bufio"
+	"faf-pioneer/util"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"strconv"
 )
@@ -36,28 +37,33 @@ func (s *GpgNetClient) Listen(adapterToFafClient chan *GpgMessage, fafClientToAd
 	faStreamReader := NewFaStreamReader(bufferReader)
 
 	go func() {
-		log.Println("Waiting for incoming GpgNet message")
+		slog.Info("Waiting for incoming GpgNet message from parent")
 
 		for {
 			// Read one message from the connection.
 			command, err := faStreamReader.ReadString()
 			if err == io.EOF {
-				fmt.Println("EOF reached, closing connection.")
+				slog.Info("Closing GpgNet connection from parent (EOF reached)")
 				return
 			}
 			if err != nil {
-				fmt.Printf("error parsing command from %s: %v\n", conn.RemoteAddr(), err)
-				continue
+				slog.Error("Error parsing command from parent GpgNetServer, closing connection",
+					slog.Any("remoteAddress", conn.RemoteAddr()),
+					util.ErrorAttr(err),
+				)
+				return
 			}
 
 			chunks, err := faStreamReader.ReadChunks()
 			if err == io.EOF {
-				fmt.Println("EOF reached, closing connection.")
+				slog.Info("Closing GpgNet connection from parent (EOF reached)")
 				return
 			}
 			if err != nil {
-				fmt.Printf("error parsing command from %s: %v", conn.RemoteAddr(), err)
-				continue
+				slog.Error("Error parsing command from parent GpgNetServer, closing connection",
+					slog.Any("remoteAddress", conn.RemoteAddr()),
+					util.ErrorAttr(err),
+				)
 			}
 
 			unparsedMsg := GenericGpgMessage{
@@ -67,7 +73,6 @@ func (s *GpgNetClient) Listen(adapterToFafClient chan *GpgMessage, fafClientToAd
 
 			// WTF is going on here?
 			var typed GpgMessage = &unparsedMsg
-
 			adapterToFafClient <- &typed
 		}
 	}()
@@ -76,10 +81,18 @@ func (s *GpgNetClient) Listen(adapterToFafClient chan *GpgMessage, fafClientToAd
 		bufferedWriter := bufio.NewWriter(conn)
 		faStreamWriter := NewFaStreamWriter(bufferedWriter)
 
-		log.Println("Waiting for GpgNet messages to be sent")
+		slog.Info("Ready to forward GpgNet messages parent GpgNet server")
 
 		for msg := range fafClientToAdapter {
-			faStreamWriter.WriteMessage(*msg)
+			err := faStreamWriter.WriteMessage(*msg)
+			if err != nil {
+				slog.Error("Error writing command to parent GpgNetServer, closing connection",
+					slog.Any("remoteAddress", conn.RemoteAddr()),
+					slog.Any("message", msg),
+					util.ErrorAttr(err),
+				)
+				return
+			}
 		}
 	}()
 
@@ -87,5 +100,11 @@ func (s *GpgNetClient) Listen(adapterToFafClient chan *GpgMessage, fafClientToAd
 }
 
 func (s *GpgNetClient) Close() {
-	(*s.connection).Close()
+	err := (*s.connection).Close()
+	if err != nil {
+		slog.Warn("Error on closing connection to parent GpgNet server",
+			util.ErrorAttr(err),
+		)
+		return
+	}
 }

@@ -2,9 +2,9 @@ package webrtc
 
 import (
 	"faf-pioneer/icebreaker"
-	"fmt"
+	"faf-pioneer/util"
 	pionwebrtc "github.com/pion/webrtc/v4"
-	"log"
+	"log/slog"
 )
 
 type PeerHandler interface {
@@ -49,10 +49,10 @@ func (p *PeerManager) Start() {
 	for msg := range p.icebreakerEvents {
 		switch event := msg.(type) {
 		case *icebreaker.ConnectedMessage:
-			log.Printf("Connecting to peer: %s\n", event)
+			slog.Info("Connecting to peer", slog.Any("event", event))
 			p.addPeerIfMissing(event.SenderID)
 		case *icebreaker.CandidatesMessage:
-			fmt.Printf("Received CandidatesMessage: %s\n", event)
+			slog.Info("Received CandidatesMessage", slog.Any("event", event))
 			peer := p.peers[event.SenderID]
 
 			if peer == nil {
@@ -64,7 +64,7 @@ func (p *PeerManager) Start() {
 				panic(err)
 			}
 		default:
-			fmt.Printf("Unknown event type: %s\n", event)
+			slog.Warn("Unknown event type", slog.Any("event", event))
 		}
 
 	}
@@ -76,12 +76,12 @@ func (p *PeerManager) AddPeerIfMissing(playerId uint) PeerMeta {
 
 func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 	if p.peers[playerId] != nil {
-		log.Printf("Peer %d already exists\n", playerId)
+		slog.Info("Peer already exists", slog.Any("playerId", playerId))
 		// TODO: What if peer exists but was disconnected already?
 		return p.peers[playerId]
 	}
 
-	log.Printf("Creating peer %d\n", playerId)
+	slog.Info("Creating peer", slog.Any("playerId", playerId))
 
 	// The smaller user id is always the offerer
 	newPeer, err := CreatePeer(p.userId < playerId, playerId, p.turnServer, p.nextPeerUdpPort, p.gameUdpPort, p.onCandidatesGathered(playerId))
@@ -110,7 +110,7 @@ func (p *PeerManager) onCandidatesGathered(remotePeer uint) func(*pionwebrtc.Ses
 			})
 
 		if err != nil {
-			log.Printf("Failed to send candidates: %s\n", err)
+			slog.Error("Failed to send candidates", util.ErrorAttr(err))
 		}
 	}
 }

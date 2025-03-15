@@ -2,8 +2,7 @@ package forgedalliance
 
 import (
 	"faf-pioneer/webrtc"
-	"fmt"
-	"log"
+	"log/slog"
 	"testing"
 )
 
@@ -21,7 +20,7 @@ func (p *MockPeer) PeerId() uint {
 }
 
 func (p *MockPeerHandler) AddPeerIfMissing(playerId uint) webrtc.PeerMeta {
-	log.Printf("AddPeerIfMissing: playerId=%d", playerId)
+	slog.Info("AddPeerIfMissing", slog.Any("playerId", playerId))
 	return &MockPeer{playerId: playerId}
 }
 
@@ -34,9 +33,9 @@ func TestAdapter2Game(t *testing.T) {
 
 	go gpgNetServer.Listen(gameToAdapter, adapterToGame)
 
-	fmt.Println("GpgNet TCP server started, please start the game now")
+	slog.Info("GpgNet TCP server started, please start the game now")
 
-	fmt.Println("Forged Alliance started successfully!")
+	slog.Info("Forged Alliance started successfully!")
 
 	// Receive GameState=Idle "hello" from game
 	gameStateLobby := <-gameToAdapter
@@ -61,7 +60,7 @@ func TestAdapter2Game(t *testing.T) {
 	}
 	adapterToGame <- &hostGameMessage
 
-	log.Printf("GameStateLobby: %v", gameStateLobby)
+	slog.Info("GameStateLobby", slog.Any("state", gameStateLobby))
 
 	var conectToPeerMessage GpgMessage = &ConnectToPeerMessage{
 		Command:           "ConnectToPeer",

@@ -2,7 +2,7 @@ package util
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 )
 
@@ -52,7 +52,7 @@ func (p *GameUDPProxy) Close() {
 	p.closed = true
 	err := p.conn.Close()
 	if err != nil {
-		log.Printf("Error closing UDP connection: %v", err)
+		slog.Warn("Error closing UDP connection", ErrorAttr(err))
 	}
 
 	close(p.dataFromGameChannel)
@@ -63,7 +63,7 @@ func (p *GameUDPProxy) receiveLoop() {
 	for !p.closed {
 		n, _, err := p.conn.ReadFromUDP(buffer)
 		if err != nil {
-			log.Println("Error reading data from game:", err)
+			slog.Warn("Error reading data from game", ErrorAttr(err))
 			continue
 		}
 		p.dataFromGameChannel <- buffer[:n]
@@ -79,7 +79,7 @@ func (p *GameUDPProxy) sendLoop() {
 
 		_, err := p.conn.WriteToUDP(data, p.localAddr) // Send data back to local UDP socket
 		if err != nil {
-			log.Println("Error forwarding data to game:", err)
+			slog.Warn("Error forwarding data to game", ErrorAttr(err))
 		}
 		p.gameMessagesSent++
 	}
