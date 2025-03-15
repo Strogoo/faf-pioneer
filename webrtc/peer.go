@@ -1,6 +1,7 @@
 package webrtc
 
 import (
+	"context"
 	"encoding/json"
 	"faf-pioneer/util"
 	"fmt"
@@ -17,6 +18,7 @@ type PeerMeta interface {
 type Peer struct {
 	offerer              bool
 	peerId               uint
+	context              context.Context
 	connection           *webrtc.PeerConnection
 	gameDataChannel      *webrtc.DataChannel
 	offer                *webrtc.SessionDescription
@@ -49,6 +51,10 @@ func CreatePeer(
 	webrtcToGamePort uint,
 	onCandidatesGathered func(*webrtc.SessionDescription, []webrtc.ICECandidate)) (*Peer, error) {
 	var err error
+
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, "remotePlayerId", peerId)
+	ctx = context.WithValue(ctx, "localOfferer", offerer)
 
 	gameToWebrtcChannel := make(chan []byte)
 	webrtcToGameChannel := make(chan []byte)
@@ -119,7 +125,7 @@ func CreatePeer(
 	})
 
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		slog.Info("Peer Connection State has changed", slog.String("state", state.String()))
+		slog.InfoContext(ctx, "Peer Connection State has changed", slog.String("state", state.String()))
 
 		if state == webrtc.PeerConnectionStateConnected {
 			var selectedCandidatePair webrtc.ICECandidatePairStats
@@ -139,16 +145,16 @@ func CreatePeer(
 
 			localCandidateJson, err := json.Marshal(candidates[selectedCandidatePair.LocalCandidateID])
 			if err != nil {
-				slog.Warn("Failed to serialize local candidate", util.ErrorAttr(err))
+				slog.WarnContext(ctx, "Failed to serialize local candidate", util.ErrorAttr(err))
 			} else {
-				slog.Info("Local candidate", slog.String("candidate", string(localCandidateJson)))
+				slog.InfoContext(ctx, "Local candidate", slog.String("candidate", string(localCandidateJson)))
 			}
 
 			remoteCandidateJson, err := json.Marshal(candidates[selectedCandidatePair.RemoteCandidateID])
 			if err != nil {
-				slog.Warn("Failed to serialize remote candidate", util.ErrorAttr(err))
+				slog.WarnContext(ctx, "Failed to serialize remote candidate", util.ErrorAttr(err))
 			} else {
-				slog.Info("Remote candidate", slog.String("candidate", string(remoteCandidateJson)))
+				slog.InfoContext(ctx, "Remote candidate", slog.String("candidate", string(remoteCandidateJson)))
 			}
 		}
 	})
@@ -207,14 +213,14 @@ func (p *Peer) Close() error {
 }
 
 func (p *Peer) RegisterDataChannel() {
-	slog.Info("Registering data channel handlers",
+	slog.InfoContext(p.context, "Registering data channel handlers",
 		slog.String("label", p.gameDataChannel.Label()),
 		slog.Any("id", *p.gameDataChannel.ID()),
 	)
 
 	// Register channel opening handling
 	p.gameDataChannel.OnOpen(func() {
-		slog.Info("Data channel opened",
+		slog.InfoContext(p.context, "Data channel opened",
 			slog.String("label", p.gameDataChannel.Label()),
 			slog.Any("id", *p.gameDataChannel.ID()),
 		)
@@ -223,7 +229,7 @@ func (p *Peer) RegisterDataChannel() {
 			for msg := range p.gameToWebrtcChannel {
 				err := p.gameDataChannel.Send(msg)
 				if err != nil {
-					slog.Error("Could not send data to WebRTC data channel", util.ErrorAttr(err))
+					slog.ErrorContext(p.context, "Could not send data to WebRTC data channel", util.ErrorAttr(err))
 				}
 			}
 		}()
