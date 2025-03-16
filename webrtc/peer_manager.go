@@ -59,10 +59,13 @@ func (p *PeerManager) Start() {
 				peer = p.addPeerIfMissing(event.SenderID)
 			}
 
-			err := peer.AddCandidates(event.Session, event.Candidates)
-			if err != nil {
-				panic(err)
+			if peer.connection.ICEConnectionState() != pionwebrtc.ICEConnectionStateConnected {
+				err := peer.AddCandidates(event.Session, event.Candidates)
+				if err != nil {
+					panic(err)
+				}
 			}
+
 		default:
 			slog.Warn("Unknown event type", slog.Any("event", event))
 		}
@@ -75,10 +78,14 @@ func (p *PeerManager) AddPeerIfMissing(playerId uint) PeerMeta {
 }
 
 func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
-	if p.peers[playerId] != nil {
+	if peer, ok := p.peers[playerId]; ok {
 		slog.Info("Peer already exists", slog.Any("playerId", playerId))
 		// TODO: What if peer exists but was disconnected already?
-		return p.peers[playerId]
+		err := peer.InitiateConnection()
+		if err != nil {
+			panic(err)
+		}
+		return peer
 	}
 
 	slog.Info("Creating peer", slog.Any("playerId", playerId))
@@ -91,6 +98,11 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 
 	p.peers[playerId] = newPeer
 	p.nextPeerUdpPort++
+
+	err = newPeer.InitiateConnection()
+	if err != nil {
+		panic(err)
+	}
 
 	return newPeer
 }

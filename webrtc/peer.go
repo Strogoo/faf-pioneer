@@ -80,30 +80,6 @@ func CreatePeer(
 		return nil, peer.wrapError("cannot create peer connection", err)
 	}
 
-	if offerer {
-		// default is ordered and announced, we don't need to pass options
-		dataChannel, err := connection.CreateDataChannel("gameData", nil)
-		if err != nil {
-			return nil, peer.wrapError("cannot create data channel", err)
-		}
-
-		peer.gameDataChannel = dataChannel
-		peer.RegisterDataChannel()
-
-		// Sets the LocalDescription, and starts our UDP listeners
-		// Note: this will start the gathering of ICE candidates
-		offer, err := connection.CreateOffer(nil)
-		if err != nil {
-			panic(err)
-		}
-
-		peer.offer = &offer
-
-		if err = connection.SetLocalDescription(offer); err != nil {
-			panic(err)
-		}
-	}
-
 	connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		peer.candidatesMux.Lock()
 		defer peer.candidatesMux.Unlock()
@@ -171,6 +147,38 @@ func CreatePeer(
 	return &peer, nil
 }
 
+func (p *Peer) InitiateConnection() error {
+	if p.offerer && p.connection.ICEConnectionState() == webrtc.ICEConnectionStateNew {
+		slog.InfoContext(p.context, "Initiating connection")
+
+		// default is ordered and announced, we don't need to pass options
+		dataChannel, err := p.connection.CreateDataChannel("gameData", nil)
+		if err != nil {
+			return p.wrapError("cannot create data channel", err)
+		}
+
+		p.gameDataChannel = dataChannel
+		p.RegisterDataChannel()
+
+		// Sets the LocalDescription, and starts our UDP listeners
+		// Note: this will start the gathering of ICE candidates
+		offer, err := p.connection.CreateOffer(nil)
+		if err != nil {
+			return p.wrapError("cannot create offer", err)
+		}
+
+		p.offer = &offer
+
+		if err = p.connection.SetLocalDescription(offer); err != nil {
+			return p.wrapError("cannot set local description", err)
+		}
+	} else {
+		slog.DebugContext(p.context, "Not initiating connection")
+	}
+
+	return nil
+}
+
 func (p *Peer) AddCandidates(session *webrtc.SessionDescription, candidates []webrtc.ICECandidate) error {
 	p.answer = session
 
@@ -215,7 +223,7 @@ func (p *Peer) Close() error {
 func (p *Peer) RegisterDataChannel() {
 	slog.InfoContext(p.context, "Registering data channel handlers",
 		slog.String("label", p.gameDataChannel.Label()),
-		slog.Any("id", *p.gameDataChannel.ID()),
+		//		slog.Any("id", *p.gameDataChannel.ID()),
 	)
 
 	// Register channel opening handling
