@@ -2,7 +2,6 @@ package webrtc
 
 import (
 	"context"
-	"encoding/json"
 	"faf-pioneer/util"
 	"fmt"
 	"github.com/pion/webrtc/v4"
@@ -119,19 +118,8 @@ func CreatePeer(
 				}
 			}
 
-			localCandidateJson, err := json.Marshal(candidates[selectedCandidatePair.LocalCandidateID])
-			if err != nil {
-				slog.WarnContext(ctx, "Failed to serialize local candidate", util.ErrorAttr(err))
-			} else {
-				slog.InfoContext(ctx, "Local candidate", slog.String("candidate", string(localCandidateJson)))
-			}
-
-			remoteCandidateJson, err := json.Marshal(candidates[selectedCandidatePair.RemoteCandidateID])
-			if err != nil {
-				slog.WarnContext(ctx, "Failed to serialize remote candidate", util.ErrorAttr(err))
-			} else {
-				slog.InfoContext(ctx, "Remote candidate", slog.String("candidate", string(remoteCandidateJson)))
-			}
+			slog.InfoContext(ctx, "Local candidate", slog.Any("candidate", candidates[selectedCandidatePair.LocalCandidateID]))
+			slog.InfoContext(ctx, "Remote candidate", slog.Any("candidate", candidates[selectedCandidatePair.RemoteCandidateID]))
 		}
 	})
 
