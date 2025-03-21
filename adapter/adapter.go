@@ -1,73 +1,59 @@
 package adapter
 
 import (
-	"faf-pioneer/forgedalliance"
+	"context"
+	"faf-pioneer/applog"
+	"faf-pioneer/faf"
+	"faf-pioneer/gpgnet"
 	"faf-pioneer/icebreaker"
+	"faf-pioneer/launcher"
 	"faf-pioneer/util"
 	"faf-pioneer/webrtc"
+	"fmt"
 	pionwebrtc "github.com/pion/webrtc/v4"
-	"github.com/samber/slog-multi"
-	"log/slog"
-	"os"
-	"strconv"
+	"go.uber.org/zap"
 	"strings"
-	"time"
 )
 
-type GlobalChannels struct {
-	gpgNetFromGame      chan *forgedalliance.GpgMessage
-	gpgNetToGame        chan *forgedalliance.GpgMessage
-	gpgNetToFafClient   chan *forgedalliance.GpgMessage
-	gpgNetFromFafClient chan *forgedalliance.GpgMessage
+type Adapter struct {
+	gpgNetFromGame      chan gpgnet.Message
+	gpgNetToGame        chan gpgnet.Message
+	gpgNetToFafClient   chan gpgnet.Message
+	gpgNetFromFafClient chan gpgnet.Message
 	gameDataToGame      chan *[]byte
+	icebreakerClient    *icebreaker.Client
+	ctx                 context.Context
+	launcherInfo        *launcher.Info
 }
 
-func Start(
-	userId uint,
-	gameId uint64,
-	accessToken string,
-	apiRoot string,
-	gpgNetPort uint,
-	gpgNetClientPort uint,
-	gameUdpPort uint,
-) {
-	logFile := openLogFileOrCrash(userId, gameId)
-	defer logFile.Close()
-
-	initLogger(userId, gameId, logFile)
-
-	globalChannels := GlobalChannels{
-		gpgNetFromGame:      make(chan *forgedalliance.GpgMessage),
-		gpgNetToGame:        make(chan *forgedalliance.GpgMessage),
-		gpgNetToFafClient:   make(chan *forgedalliance.GpgMessage),
-		gpgNetFromFafClient: make(chan *forgedalliance.GpgMessage),
+func New(ctx context.Context, info *launcher.Info) *Adapter {
+	instance := &Adapter{
+		ctx:                 ctx,
+		launcherInfo:        info,
+		gpgNetFromGame:      make(chan gpgnet.Message),
+		gpgNetToGame:        make(chan gpgnet.Message),
+		gpgNetToFafClient:   make(chan gpgnet.Message),
+		gpgNetFromFafClient: make(chan gpgnet.Message),
 		gameDataToGame:      make(chan *[]byte),
+		icebreakerClient:    icebreaker.NewClient(ctx, info.ApiRoot, info.GameId, info.AccessToken),
 	}
 
-	// Wire GpgNetClient to GpgNetServer
-	go func() {
-		for msg := range globalChannels.gpgNetFromGame {
-			globalChannels.gpgNetToFafClient <- msg
-		}
-	}()
+	return instance
+}
 
-	go func() {
-		for msg := range globalChannels.gpgNetFromFafClient {
-			globalChannels.gpgNetToGame <- msg
-		}
-	}()
-
+func (a *Adapter) Start() error {
 	// Gather ICE servers and listen for WebRTC events
-	icebreakerClient := icebreaker.NewClient(apiRoot, gameId, accessToken)
-	sessionGameResponse, err := icebreakerClient.GetGameSession()
-
+	sessionGameResponse, err := a.icebreakerClient.GetGameSession()
 	if err != nil {
-		slog.Error("Could not query turn servers", util.ErrorAttr(err))
-		os.Exit(1)
+		return fmt.Errorf("could not query turn servers: %v", err)
 	}
 
-	channel := make(chan icebreaker.EventMessage)
-	go icebreakerClient.Listen(channel)
+	iceBreakerEventChannel := make(chan icebreaker.EventMessage)
+	go func() {
+		if err = a.icebreakerClient.Listen(iceBreakerEventChannel); err != nil {
+			applog.Error("could not start listening ICE-Breaker API (server-side) events", zap.Error(err))
+		}
+	}()
 
 	turnServer := make([]pionwebrtc.ICEServer, len(sessionGameResponse.Servers))
 	for i, server := range sessionGameResponse.Servers {
@@ -84,55 +70,74 @@ func Start(
 		}
 	}
 
-	var peerUdpPort uint = 18000 // TODO: Pick a "free random one"?
+	for _, server := range sessionGameResponse.Servers {
+		applog.Debug("Turn server", zap.Strings("urls", server.Urls))
+	}
+
+	peerUdpPort, err := util.GetFreeUdpPort()
+	if err != nil {
+		return fmt.Errorf("failed to find free udp peer port: %v", err)
+	}
+
+	if a.launcherInfo.ForceTurnRelay {
+		applog.Debug("Forcing TURN relay on")
+	}
+
+	applog.Debug("Selected UDP game port", zap.Uint("gamePort", peerUdpPort))
 
 	peerManager := webrtc.NewPeerManager(
-		&icebreakerClient,
-		userId,
-		gameId,
-		gameUdpPort,
+		a.ctx,
+		a.icebreakerClient,
+		a.launcherInfo,
 		peerUdpPort,
 		turnServer,
-		channel,
+		iceBreakerEventChannel,
 	)
+
+	gpgNetServer := faf.NewGpgNetServer(a.ctx, peerManager, a.launcherInfo.GpgNetPort)
+	gpgNetClient := faf.NewGpgNetClient(a.ctx, a.launcherInfo.GpgNetClientPort)
+
+	// Redirect messages from FAF.exe to FAF-Client
+	go util.RedirectChannelWithContext(a.ctx, a.gpgNetFromGame, a.gpgNetToFafClient)
+	// Redirect messages from FAF-Client to FAF.exe
+	go func() {
+		for {
+			select {
+			case msg, ok := <-a.gpgNetFromFafClient:
+				if !ok {
+					return
+				}
+
+				if baseMsg, isBase := msg.(*gpgnet.BaseMessage); isBase {
+					parsedMsg, parseErr := baseMsg.TryParse()
+					if parseErr == nil {
+						processed := gpgNetServer.ProcessMessage(parsedMsg)
+						a.gpgNetToGame <- processed
+						continue
+					}
+				}
+
+				a.gpgNetToGame <- msg
+			case <-a.ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// Start the GPG-Net control server that acts like a primary bridge between game and this network adapter.
+	go func() {
+		if err := gpgNetServer.Listen(a.gpgNetFromGame, a.gpgNetToGame, peerUdpPort); err != nil {
+			applog.Error("Failed to start listening GPG-Net control server connections", zap.Error(err))
+		}
+	}()
+
+	// Start the GPG-Net client that will proxy data from game to FAF-Client.
+	go func() {
+		if err := gpgNetClient.Connect(a.gpgNetToFafClient, a.gpgNetFromFafClient); err != nil {
+			applog.Error("Failed to start listening GPG-Net client proxy connections", zap.Error(err))
+		}
+	}()
 
 	peerManager.Start()
-
-	// Start the Gpgnet Control Server
-	gpgNetServer := forgedalliance.NewGpgNetServer(&peerManager, gpgNetPort)
-	go gpgNetServer.Listen(globalChannels.gpgNetFromGame, globalChannels.gpgNetToGame)
-
-	// Start the GpgNet client to proxy data to the FAF client
-	gpgNetClient := forgedalliance.NewGpgNetClient(gpgNetClientPort)
-	go gpgNetClient.Listen(globalChannels.gpgNetToFafClient, globalChannels.gpgNetFromFafClient)
-}
-
-func initLogger(userId uint, gameId uint64, logFile *os.File) {
-	// Create console and file handlers
-	consoleHandler := slog.NewJSONHandler(os.Stdout, nil)
-	fileHandler := slog.NewJSONHandler(logFile, nil)
-
-	// Use slog-multi to log to both handlers
-	multiHandler := slogmulti.Fanout(consoleHandler, fileHandler)
-
-	logger := slog.New(multiHandler).With(
-		"userId", userId,
-		"gameId", gameId,
-	)
-	slog.SetDefault(logger)
-}
-
-func openLogFileOrCrash(userId uint, gameId uint64) *os.File {
-	// Generate a unique log filename using timestamp
-	logFilename := "Game_" + strconv.FormatUint(gameId, 10) +
-		"_User_" + strconv.Itoa(int(userId)) + "_" +
-		time.Now().Format("2006-01-02_15-04-05") + ".log"
-
-	// Open file for logging
-	logFile, err := os.OpenFile(logFilename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		slog.Error("Failed to open log file", util.ErrorAttr(err))
-		os.Exit(1)
-	}
-	return logFile
+	return nil
 }

@@ -31,7 +31,7 @@ services:
   faf-icebreaker:
     image: faforever/faf-icebreaker:1.1.0
     ports:
-      - "8080:8080"
+      - "0.0.0.0:8080:8080"
     environment:
       QUARKUS_PROFILE: dev
       DB_URL: jdbc:mariadb://mariadb:3306/faf-icebreaker?ssl=false
@@ -50,12 +50,12 @@ services:
   eturnal:
     image: ghcr.io/processone/eturnal:1.12.1
     ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "50000-50500:50000-50500/udp"
+      - "0.0.0.0:3478:3478"
+      - "0.0.0.0:3478:3478/udp"
+      - "0.0.0.0:50000-50010:50000-50010/udp"
     environment:
       ETURNAL_RELAY_MIN_PORT: 50000
-      ETURNAL_RELAY_MAX_PORT: 50500
+      ETURNAL_RELAY_MAX_PORT: 50010
       ETURNAL_SECRET: "banana"
 
   # Idempotent INSERT of the eturnal service above into the faf-icebreaker db
@@ -66,7 +66,8 @@ services:
       - -c
       - >
         mariadb -h mariadb -uroot -pbanana -D faf-icebreaker -e 
-        "INSERT IGNORE INTO coturn_servers (id, region, host, stun_port, turn_udp_port, turn_tcp_port, turns_tcp_port, preshared_key, contact_email, active) 
+        "INSERT IGNORE INTO coturn_servers 
+        (id, region, host, stun_port, turn_udp_port, turn_tcp_port, turns_tcp_port, preshared_key, contact_email, active) 
         VALUES (1, 'localhost', '127.0.0.1', 3478, 3478, 3478, null, 'banana', 'admin@faforever.com', 1);"
     depends_on:
       faf-icebreaker:

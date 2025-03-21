@@ -1,8 +1,9 @@
 package util
 
 import (
+	"faf-pioneer/applog"
 	"fmt"
-	"log/slog"
+	"go.uber.org/zap"
 	"net"
 )
 
@@ -17,7 +18,13 @@ type GameUDPProxy struct {
 	gameMessagesReceived uint32
 }
 
-func NewGameUDPProxy(localPort, proxyPort uint, dataFromGameChannel chan<- []byte, dataToGameChannel <-chan []byte) (*GameUDPProxy, error) {
+func NewGameUDPProxy(
+	localPort,
+	proxyPort uint,
+	dataFromGameChannel chan<- []byte,
+	dataToGameChannel <-chan []byte,
+) (*GameUDPProxy, error) {
+	// localPort is where FAF.exe will create lobby and listen for UDP game data
 	localAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("127.0.0.1:%d", localPort))
 	if err != nil {
 		return nil, err
@@ -28,6 +35,8 @@ func NewGameUDPProxy(localPort, proxyPort uint, dataFromGameChannel chan<- []byt
 		return nil, err
 	}
 
+	// Listening on proxyPort and then sending everything back to localPort, which is a FAF.exe
+	// UDP game port.
 	conn, err := net.ListenUDP("udp", proxyAddr)
 	if err != nil {
 		return nil, err
@@ -42,6 +51,10 @@ func NewGameUDPProxy(localPort, proxyPort uint, dataFromGameChannel chan<- []byt
 		closed:              false,
 	}
 
+	applog.Debug("Running game UDP proxy",
+		zap.Uint("localPort", localPort),
+		zap.Uint("proxyPort", proxyPort))
+
 	go proxy.receiveLoop()
 	go proxy.sendLoop()
 
@@ -52,7 +65,7 @@ func (p *GameUDPProxy) Close() {
 	p.closed = true
 	err := p.conn.Close()
 	if err != nil {
-		slog.Warn("Error closing UDP connection", ErrorAttr(err))
+		applog.Warn("Error closing UDP connection", zap.Error(err))
 	}
 
 	close(p.dataFromGameChannel)
@@ -63,7 +76,7 @@ func (p *GameUDPProxy) receiveLoop() {
 	for !p.closed {
 		n, _, err := p.conn.ReadFromUDP(buffer)
 		if err != nil {
-			slog.Warn("Error reading data from game", ErrorAttr(err))
+			applog.Warn("Error reading data from game", zap.Error(err))
 			continue
 		}
 		p.dataFromGameChannel <- buffer[:n]
@@ -77,9 +90,10 @@ func (p *GameUDPProxy) sendLoop() {
 			return
 		}
 
-		_, err := p.conn.WriteToUDP(data, p.localAddr) // Send data back to local UDP socket
+		// Send data back to local UDP socket
+		_, err := p.conn.WriteToUDP(data, p.localAddr)
 		if err != nil {
-			slog.Warn("Error forwarding data to game", ErrorAttr(err))
+			applog.Warn("Error forwarding data to game", zap.Error(err))
 		}
 		p.gameMessagesSent++
 	}
