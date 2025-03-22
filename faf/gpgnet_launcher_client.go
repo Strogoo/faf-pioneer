@@ -6,6 +6,7 @@ import (
 	"errors"
 	"faf-pioneer/applog"
 	"faf-pioneer/gpgnet"
+	"faf-pioneer/util"
 	"fmt"
 	"go.uber.org/zap"
 	"io"
@@ -196,11 +197,15 @@ func (s *GpgNetLauncherClient) processMessage(rawMessage gpgnet.Message) gpgnet.
 		switch msg.State {
 		case gpgnet.GameStateIde:
 			// TODO: Player service emulation?
+			gameUdpPort, err := util.GetFreeUdpPort()
+			if err != nil {
+				applog.Error("Error allocating game udp port", append(s.loggerFields, zap.Error(err))...)
+			}
 
 			s.sendMessage(gpgnet.NewCreateLobbyMessage(
 				gpgnet.LobbyInitModeNormal,
 				// LocalGameUdpPort
-				int32(s.server.info.GameUdpPort),
+				int32(gameUdpPort),
 				s.server.info.UserName,
 				// PlayerId
 				int32(s.server.info.UserId),
