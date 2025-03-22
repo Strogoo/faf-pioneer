@@ -8,6 +8,7 @@ import (
 	"faf-pioneer/util"
 	"github.com/pion/webrtc/v4"
 	"go.uber.org/zap"
+	"net"
 	"sync"
 	"time"
 )
@@ -73,7 +74,15 @@ func NewPeerManager(
 		reconnectionRequests: make(chan uint, maxLobbyPeers),
 	}
 
+	// Note:
+	// Setting maxLobbyPeers for `reconnectionRequests` initial capacity does not bound its size:
+	// maps grow to accommodate the number of items stored in them.
+
 	return &peerManager
+}
+
+func (p *PeerManager) GetGameUdpPort() uint {
+	return p.gameUdpPort
 }
 
 func (p *PeerManager) Start() {
@@ -117,29 +126,41 @@ func (p *PeerManager) handleReconnection(playerId uint) {
 		return
 	}
 
+	if !peer.IsActive() {
+		return
+	}
+
+	// TODO: After `Peer connection state has changed` to `closed` this still reaches, debug more.
+
 	peer.reconnectionScheduled = false
 	applog.Info("Reconnection succeeded for peer", zap.Uint("playerId", playerId))
 }
 
 func (p *PeerManager) scheduleReconnection(playerId uint) {
-	peer := p.GetPeerById(playerId)
-	if peer == nil {
+	p.peerMu.Lock()
+	defer p.peerMu.Unlock()
+
+	peer, exists := p.peers[playerId]
+	if !exists || peer.IsDisabled() {
 		return
 	}
 
 	peer.reconnectMu.Lock()
 	defer peer.reconnectMu.Unlock()
-	if peer.reconnectionScheduled {
-		applog.Info("Reconnection already scheduled for peer", zap.Uint("playerId", playerId))
+
+	if peer.reconnectionScheduled ||
+		peer.connection.ConnectionState() == webrtc.PeerConnectionStateConnecting {
 		return
 	}
+
 	peer.reconnectionScheduled = true
 
 	select {
 	case p.reconnectionRequests <- playerId:
-		applog.Info("Scheduled reconnection for peer", zap.Uint("playerId", playerId))
+		applog.Debug("Reconnect scheduled", zap.Uint("peer", playerId))
 	default:
-		applog.Info("Reconnection already scheduled (channel full) for peer", zap.Uint("playerId", playerId))
+		peer.reconnectionScheduled = false
+		applog.Warn("Reconnect queue overflow", zap.Uint("peer", playerId))
 	}
 }
 
@@ -163,7 +184,10 @@ func (p *PeerManager) handleIceBreakerEvent(msg icebreaker.EventMessage) {
 		if peer.connection.ICEConnectionState() != webrtc.ICEConnectionStateConnected {
 			err := peer.AddCandidates(event.Session, event.Candidates)
 			if err != nil {
-				panic(err)
+				applog.FromContext(peer.ctx).Error(
+					"Could not add candidate to active peer connection",
+					zap.Error(err),
+				)
 			}
 		}
 	default:
@@ -206,7 +230,7 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 
 	applog.Info("Creating new peer", zap.Uint("playerId", playerId))
 
-	// The smaller user id is always the offerer
+	// The smaller user id is always the offerer.
 	isOfferer := p.localUserId < playerId
 	peerUdpPort, err := util.GetFreeUdpPort()
 	if err != nil {
@@ -215,17 +239,15 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 	}
 
 	newPeer, err := CreatePeer(
+		p.ctx,
 		isOfferer,
 		playerId,
-		p.turnServer,
+		p,
 		peerUdpPort,
 		p.gameUdpPort,
-		p.onPeerCandidatesGathered(playerId),
-		p.onPeerStateChanged,
-		p.forceTurnRelay,
 	)
 	if err != nil {
-		applog.Error("Failed to create peer", zap.Uint("playerId", playerId), zap.Error(err))
+		applog.FromContext(p.ctx).Error("Failed to create peer", zap.Error(err))
 		return nil
 	}
 
@@ -236,20 +258,35 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 }
 
 func (p *PeerManager) onPeerStateChanged(peer *Peer, state webrtc.PeerConnectionState) {
-	applog.FromContext(peer.context).Info(
+	applog.FromContext(peer.ctx).Info(
 		"Peer connection state has changed",
 		zap.String("state", state.String()),
 	)
 
 	switch state {
 	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
-		applog.FromContext(peer.context).Info("Peer connection failed or closed, scheduling immediate reconnection")
+		select {
+		case <-peer.localAddrReady:
+		default:
+			peer.localAddrReadyOnce.Do(func() {
+				close(peer.localAddrReady)
+			})
+		}
+
+		applog.FromContext(peer.ctx).Info(
+			"Peer connection failed or closed, scheduling immediate reconnection")
+
 		if state == webrtc.PeerConnectionStateFailed && peer.forceTurnRelay {
-			applog.FromContext(peer.context).Info("Switching to fallback relay All policy")
+			applog.FromContext(peer.ctx).Info("Switching to fallback relay All policy")
 			peer.forceTurnRelay = false
 		}
-		p.scheduleReconnection(peer.PeerId())
 
+		peer.reconnectMu.Lock()
+		peer.reconnectionScheduled = false
+		peer.reconnectMu.Unlock()
+
+		p.scheduleReconnection(peer.PeerId())
+		break
 	case webrtc.PeerConnectionStateDisconnected:
 		// WebRTC documentation saying:
 		// The ICE Agent has determined that connectivity is currently lost for this RTCIceTransport.
@@ -258,12 +295,17 @@ func (p *PeerManager) onPeerStateChanged(peer *Peer, state webrtc.PeerConnection
 		// However:
 		// The way this state is determined is implementation dependent.
 		// Suggesting to handle reconnection only on Failed or Closed state instead.
-		applog.FromContext(peer.context).Info("Peer disconnected, waiting to see if it recovers")
+		applog.FromContext(peer.ctx).Info("Peer disconnected, waiting to see if it recovers")
+		break
 
 	case webrtc.PeerConnectionStateConnected:
 		peer.reconnectionScheduled = false
 
-		var selectedCandidatePair webrtc.ICECandidatePairStats
+		// Theoretically there could be a situation when `webrtc.PeerConnection` does not gather
+		// statistics yet when we entered `Connected` state as a webrtc.ICECandidatePairStats might be in a
+		// webrtc.StatsICECandidatePairStateInProgress state here.
+
+		var pair webrtc.ICECandidatePairStats
 		candidates := make(map[string]webrtc.ICECandidateStats)
 
 		for _, s := range peer.connection.GetStats() {
@@ -272,21 +314,43 @@ func (p *PeerManager) onPeerStateChanged(peer *Peer, state webrtc.PeerConnection
 				candidates[stat.ID] = stat
 			case webrtc.ICECandidatePairStats:
 				if stat.State == webrtc.StatsICECandidatePairStateSucceeded {
-					selectedCandidatePair = stat
+					pair = stat
 				}
 			default:
 			}
 		}
 
-		applog.FromContext(peer.context).Info(
+		applog.Debug("Candidate pairs received, updating map")
+
+		localCandidate, okLocal := candidates[pair.LocalCandidateID]
+		remoteCandidate, okRemote := candidates[pair.RemoteCandidateID]
+		if !okLocal || !okRemote {
+			applog.FromContext(peer.ctx).Error("Could not find candidate pair in peer stats")
+			return
+		}
+
+		// Ignoring resolve error as it shouldn't really happen as WebRTC will be putting
+		// a valid IP address here.
+		localAddress, _ := net.ResolveIPAddr("ip", localCandidate.IP)
+		remoteAddress, _ := net.ResolveIPAddr("ip", remoteCandidate.IP)
+
+		peer.localAddress = localAddress
+		peer.remoteAddress = remoteAddress
+		peer.localAddrReadyOnce.Do(func() {
+			close(peer.localAddrReady)
+		})
+
+		applog.FromContext(peer.ctx).Info(
 			"Local candidate",
-			zap.Any("candidate", candidates[selectedCandidatePair.LocalCandidateID]),
+			zap.Any("candidate", localCandidate),
 		)
-		applog.FromContext(peer.context).Info(
+		applog.FromContext(peer.ctx).Info(
 			"Remote candidate",
-			zap.Any("candidate", candidates[selectedCandidatePair.RemoteCandidateID]),
+			zap.Any("candidate", remoteCandidate),
 		)
+		break
 	default:
+		break
 	}
 }
 
