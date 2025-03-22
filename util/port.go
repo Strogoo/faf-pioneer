@@ -20,5 +20,11 @@ func GetFreeUdpPort() (uint, error) {
 		_ = conn.Close()
 	}(conn)
 
-	return (uint)(conn.LocalAddr().(*net.UDPAddr).Port), nil
+	port := (uint)(conn.LocalAddr().(*net.UDPAddr).Port)
+
+	if port == 0 {
+		return 0, fmt.Errorf("could not resolve a port (got 0)")
+	}
+
+	return port, nil
 }
