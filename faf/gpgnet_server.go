@@ -35,7 +35,6 @@ type GpgNetServer struct {
 	currentConnection       net.Conn
 	currentConnectionMu     sync.Mutex
 	currentConnectionCancel context.CancelFunc
-	udpProxyPort            uint
 }
 
 func NewGpgNetServer(context context.Context, peerManager *webrtc.PeerManager, port uint) *GpgNetServer {
@@ -50,7 +49,6 @@ func NewGpgNetServer(context context.Context, peerManager *webrtc.PeerManager, p
 func (s *GpgNetServer) Listen(
 	fromGameChannel chan<- gpgnet.Message,
 	toGameChannel chan gpgnet.Message,
-	udpProxyPort uint,
 ) error {
 	lc := net.ListenConfig{}
 	listener, err := lc.Listen(s.ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", s.port))
@@ -67,7 +65,6 @@ func (s *GpgNetServer) Listen(
 	s.tcpListener = listener
 	s.fromGameChannel = fromGameChannel
 	s.toGameChannel = toGameChannel
-	s.udpProxyPort = udpProxyPort
 
 	for {
 		conn, acceptErr := util.NetAcceptWithContext(s.ctx, listener)
@@ -273,28 +270,26 @@ func (s *GpgNetServer) ProcessMessage(rawMessage gpgnet.Message) gpgnet.Message 
 	case *gpgnet.JoinGameMessage:
 		applog.Info(
 			"Joining game (swapping the address/port)",
-			append(s.loggerFields, zap.Uint("targetPort", s.udpProxyPort))...,
 		)
 
-		s.peerManager.AddPeerIfMissing(uint(msg.RemotePlayerId))
+		peer := s.peerManager.AddPeerIfMissing(uint(msg.RemotePlayerId))
 
 		return gpgnet.NewJoinGameMessage(
 			msg.RemotePlayerLogin,
 			msg.RemotePlayerId,
-			fmt.Sprintf("127.0.0.1:%d", s.udpProxyPort),
+			fmt.Sprintf("127.0.0.1:%d", peer.GetUdpPort()),
 		)
 	case *gpgnet.ConnectToPeerMessage:
 		applog.Info(
 			"Connecting to peer (swapping the address/port)",
-			append(s.loggerFields, zap.Uint("targetPort", s.udpProxyPort))...,
 		)
 
-		s.peerManager.AddPeerIfMissing(uint(msg.RemotePlayerId))
+		peer := s.peerManager.AddPeerIfMissing(uint(msg.RemotePlayerId))
 
 		return gpgnet.NewConnectToPeerMessage(
 			msg.RemotePlayerLogin,
 			msg.RemotePlayerId,
-			fmt.Sprintf("127.0.0.1:%d", s.udpProxyPort),
+			fmt.Sprintf("127.0.0.1:%d", peer.GetUdpPort()),
 		)
 	case *gpgnet.DisconnectFromPeerMessage:
 		applog.Info("Disconnecting from peer and disabling it from reconnects",

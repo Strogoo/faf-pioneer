@@ -35,13 +35,12 @@ func (gc *GameCommandHostGame) GetInitiatePackets() []gpgnet.Message {
 }
 
 type GameCommandJoinGame struct {
-	LocalGameUdpPort     int32
-	LocalPlayerId        int32
-	LocalPlayerName      string
-	RemotePlayerLogin    string
-	RemotePlayerId       int32
-	GpgNetLocalLobbyPort int32
-	RemotePeerUdpPort    int32
+	LocalGameUdpPort  int32
+	LocalPlayerId     int32
+	LocalPlayerName   string
+	RemotePlayerLogin string
+	RemotePlayerId    int32
+	RemotePeerUdpPort int32
 }
 
 func (gc *GameCommandJoinGame) GetInitiatePackets() []gpgnet.Message {
@@ -55,7 +54,7 @@ func (gc *GameCommandJoinGame) GetInitiatePackets() []gpgnet.Message {
 		gpgnet.NewJoinGameMessage(
 			gc.RemotePlayerLogin,
 			gc.RemotePlayerId,
-			fmt.Sprintf("127.0.0.1:%d", gc.GpgNetLocalLobbyPort),
+			fmt.Sprintf("127.0.0.1:%d", gc.RemotePeerUdpPort),
 		),
 	}
 }

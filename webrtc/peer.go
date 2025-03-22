@@ -14,12 +14,14 @@ import (
 type PeerMeta interface {
 	IsOfferer() bool
 	PeerId() uint
+	GetUdpPort() uint
 }
 
 type Peer struct {
 	offerer               bool
 	peerId                uint
 	context               context.Context
+	udpPort               uint
 	connection            *webrtc.PeerConnection
 	gameDataChannel       *webrtc.DataChannel
 	offer                 *webrtc.SessionDescription
@@ -46,6 +48,8 @@ func (p *Peer) IsOfferer() bool {
 func (p *Peer) PeerId() uint {
 	return p.peerId
 }
+
+func (p *Peer) GetUdpPort() uint { return p.udpPort }
 
 func (p *Peer) wrapError(format string, a ...any) error {
 	return fmt.Errorf("[Peer %d] %s", p.peerId, fmt.Sprintf(format, a...))

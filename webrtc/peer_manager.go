@@ -48,7 +48,6 @@ type PeerManager struct {
 	icebreakerEvents     <-chan icebreaker.EventMessage
 	turnServer           []webrtc.ICEServer
 	gameUdpPort          uint
-	nextPeerUdpPort      uint
 	forceTurnRelay       bool
 	reconnectionRequests chan uint
 }
