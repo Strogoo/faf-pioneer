@@ -117,6 +117,7 @@ func CreatePeer(
 		context:              ctx,
 		offerer:              offerer,
 		peerId:               peerId,
+		udpPort:              gameToWebrtcPort,
 		gameToWebrtcChannel:  gameToWebrtcChannel,
 		webrtcToGameChannel:  webrtcToGameChannel,
 		onCandidatesGathered: onCandidatesGathered,
