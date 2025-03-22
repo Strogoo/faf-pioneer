@@ -52,8 +52,8 @@ func Initialize(userId uint, gameId uint64) {
 		workdir,
 		"logs",
 		fmt.Sprintf("game_%d_user_%d_%s.log",
-			userId,
 			gameId,
+			userId,
 			time.Now().Format("2006-01-02_15-04-05"),
 		),
 	)
