@@ -245,7 +245,6 @@ with following arguments:
    - `--gpgnet-port 21000` - Local GPG-Net control server port.
    - `--gpgnet-client-port 21005` - Local GPG-Net client port that is used to communicate between `[faf-client]`
    and `[faf-pioneer]`.
-   - `--game-udp-port 14080` - Game UDP port that will be used by `[FA.exe]`.
    - `--api-root "http://localhost:8080"` - API root for ICE-Breaker server (not set in real launcher).
 2. **[ UserA ]** starts a `[faf-pioneer]` (in normal world, a `[faf-client]` should spawn a `[faf-pioneer]`
 process in the operating system) with following arguments:  
@@ -254,14 +253,12 @@ process in the operating system) with following arguments:
    - `--game-id 100`
    - `--gpgnet-port 21000`
    - `--gpgnet-client-port 21005`
-   - `--game-udp-port 14080`
    - `--api-root "http://localhost:8080"`
 3. **[ UserB ]** starts a `[faf-client]` the same way as _UserA_, except that:
    - `--user-id 2` - User ID will be **2** instead, for 3rd user it will be **3** and so on.
    - `--user-name UserB` - Username, again, only for example of `faf-launcher-emulator` command.
    - `--gpgnet-port 21001`
    - `--gpgnet-client-port 21006`
-   - `--game-udp-port 14081`
 4. **[ UserB ]** starts a `[faf-pioneer]` with same arguments as on a step 3.
 
 Assuming that both users are started their `[faf-client]` and `[faf-pioneer]`, process continues.

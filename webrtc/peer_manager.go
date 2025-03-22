@@ -5,6 +5,7 @@ import (
 	"faf-pioneer/applog"
 	"faf-pioneer/icebreaker"
 	"faf-pioneer/launcher"
+	"faf-pioneer/util"
 	"github.com/pion/webrtc/v4"
 	"go.uber.org/zap"
 	"sync"
@@ -56,7 +57,7 @@ func NewPeerManager(
 	ctx context.Context,
 	icebreakerClient *icebreaker.Client,
 	launcherInfo *launcher.Info,
-	basePeerUdpPort uint,
+	gameUdpPort uint,
 	turnServer []webrtc.ICEServer,
 	icebreakerEvents <-chan icebreaker.EventMessage,
 ) *PeerManager {
@@ -68,8 +69,7 @@ func NewPeerManager(
 		icebreakerClient:     icebreakerClient,
 		icebreakerEvents:     icebreakerEvents,
 		turnServer:           turnServer,
-		gameUdpPort:          launcherInfo.GameUdpPort,
-		nextPeerUdpPort:      basePeerUdpPort,
+		gameUdpPort:          gameUdpPort,
 		forceTurnRelay:       launcherInfo.ForceTurnRelay,
 		reconnectionRequests: make(chan uint, maxLobbyPeers),
 	}
@@ -209,12 +209,17 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 
 	// The smaller user id is always the offerer
 	isOfferer := p.localUserId < playerId
+	peerUdpPort, err := util.GetFreeUdpPort()
+	if err != nil {
+		applog.Error("Failed to get UDP port for new peer", zap.Uint("playerId", playerId), zap.Error(err))
+		return nil
+	}
 
 	newPeer, err := CreatePeer(
 		isOfferer,
 		playerId,
 		p.turnServer,
-		p.nextPeerUdpPort,
+		peerUdpPort,
 		p.gameUdpPort,
 		p.onPeerCandidatesGathered(playerId),
 		p.onPeerStateChanged,
@@ -228,7 +233,6 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 	newPeer.onStateChanged = p.onPeerStateChanged
 
 	p.peers[playerId] = newPeer
-	p.nextPeerUdpPort++
 	return newPeer
 }
 

@@ -74,7 +74,7 @@ func (a *Adapter) Start() error {
 		applog.Debug("Turn server", zap.Strings("urls", server.Urls))
 	}
 
-	peerUdpPort, err := util.GetFreeUdpPort()
+	gameUdpPort, err := util.GetFreeUdpPort()
 	if err != nil {
 		return fmt.Errorf("failed to find free udp peer port: %v", err)
 	}
@@ -83,13 +83,13 @@ func (a *Adapter) Start() error {
 		applog.Debug("Forcing TURN relay on")
 	}
 
-	applog.Debug("Selected UDP game port", zap.Uint("gamePort", peerUdpPort))
+	applog.Debug("Selected UDP game port", zap.Uint("gamePort", gameUdpPort))
 
 	peerManager := webrtc.NewPeerManager(
 		a.ctx,
 		a.icebreakerClient,
 		a.launcherInfo,
-		peerUdpPort,
+		gameUdpPort,
 		turnServer,
 		iceBreakerEventChannel,
 	)
@@ -126,7 +126,7 @@ func (a *Adapter) Start() error {
 
 	// Start the GPG-Net control server that acts like a primary bridge between game and this network adapter.
 	go func() {
-		if err := gpgNetServer.Listen(a.gpgNetFromGame, a.gpgNetToGame, peerUdpPort); err != nil {
+		if err := gpgNetServer.Listen(a.gpgNetFromGame, a.gpgNetToGame, gameUdpPort); err != nil {
 			applog.Error("Failed to start listening GPG-Net control server connections", zap.Error(err))
 		}
 	}()

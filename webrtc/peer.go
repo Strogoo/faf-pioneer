@@ -87,7 +87,7 @@ func CreatePeer(
 	gameToWebrtcChannel := make(chan []byte)
 	webrtcToGameChannel := make(chan []byte)
 
-	// `webrtcToGamePort` is our local `--game-udp-port`.
+	// `webrtcToGamePort` is the udp port the game listens on for all peers.
 	// `gameToWebrtcPort` is from where we're proxying all the data to local game port.
 
 	gameUdpProxy, err := util.NewGameUDPProxy(
