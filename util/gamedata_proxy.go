@@ -86,6 +86,10 @@ func (p *GameUDPProxy) receiveLoop() {
 			applog.Warn("Error reading data from game", zap.Error(err))
 			continue
 		}
+
+		// TODO: Remove this for production
+		applog.Info("Received data from game", zap.ByteString("data", buffer[:n]))
+
 		p.dataFromGameChannel <- buffer[:n]
 		p.gameMessagesReceived++
 	}
@@ -102,6 +106,10 @@ func (p *GameUDPProxy) sendLoop() {
 		if err != nil {
 			applog.Warn("Error forwarding data to game", zap.Error(err))
 		}
+
+		// TODO: Remove this for production
+		applog.Info("Forwarding data from game", zap.ByteString("data", data), zap.String("localAddr", p.localAddr.String()))
+
 		p.gameMessagesSent++
 	}
 }
