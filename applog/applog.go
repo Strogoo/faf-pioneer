@@ -64,10 +64,9 @@ func Initialize(userId uint, gameId uint64) {
 	logFilename := filepath.Join(
 		workdir,
 		"logs",
-		fmt.Sprintf("game_%d_user_%d_%s.log",
+		fmt.Sprintf("game_%d_user_%d.log",
 			gameId,
 			userId,
-			time.Now().Format("2006-01-02_15-04-05"),
 		),
 	)
 
@@ -138,7 +137,9 @@ var (
 func newLogger(opts ...zap.Option) *Logger {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	encoderConfig.TimeKey = "time"
-	encoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC1123)
+	encoderConfig.EncodeTime = func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString(t.UTC().Format(time.RFC3339)) // Ensure UTC
+	}
 
 	jsonEncoder := zapcore.NewJSONEncoder(encoderConfig)
 
