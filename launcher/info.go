@@ -9,7 +9,7 @@ type Info struct {
 	UserId           uint
 	UserName         string
 	GameId           uint64
-	AccessToken      string
+	AccessToken      string `json:"-"`
 	ApiRoot          string
 	GpgNetPort       uint
 	GpgNetClientPort uint

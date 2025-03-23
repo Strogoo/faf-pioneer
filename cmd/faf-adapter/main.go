@@ -23,6 +23,8 @@ func main() {
 		return
 	}
 
+	applog.LogStartup(info)
+
 	adapterInstance := adapter.New(ctx, info)
 	if err := adapterInstance.Start(); err != nil {
 		applog.Fatal("Failed to start adapter", zap.Error(err))

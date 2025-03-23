@@ -30,6 +30,8 @@ func main() {
 		return
 	}
 
+	applog.LogStartup(info)
+
 	// Client starts an own GPG-Net server that used to communicate between FAF-Client and FAF.exe.
 	// So for that we need to create GpgNetServer and start listening on gpgNetClientPort.
 

@@ -34,6 +34,19 @@ func Fatal(msg string, fields ...zapcore.Field) {
 	def.WithOptions(zap.AddCallerSkip(1)).Fatal(msg, fields...)
 }
 
+func LogStartup(launchArgs interface{}) {
+	buildInfo := build.GetBuildInfo()
+	buildCommit := "unknown"
+	if buildInfo != nil {
+		buildCommit = buildInfo.CommitHash
+	}
+
+	Info("Application started",
+		zap.String("buildCommit", buildCommit),
+		zap.Any("launchArgs", launchArgs),
+	)
+}
+
 func GetLogger() *Logger {
 	return def
 }
@@ -68,14 +81,7 @@ func Initialize(userId uint, gameId uint64) {
 		log.Fatalf("Failed to open log file '%s': %v", logFilename, err)
 	}
 
-	buildInfo := build.GetBuildInfo()
-	buildCommit := "unknown"
-	if buildInfo != nil {
-		buildCommit = buildInfo.CommitHash
-	}
-
 	l := newLogger(opts...).With(
-		zap.String("buildCommit", buildCommit),
 		zap.Uint("localUserId", userId),
 		zap.Uint64("localGameId", gameId))
 
