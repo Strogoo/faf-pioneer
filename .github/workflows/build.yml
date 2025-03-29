@@ -54,7 +54,7 @@ jobs:
 
       - name: Build Binary
         run: |
-          GOOS=${{ matrix.GOOS }} go build -o faf-pioneer-${{ matrix.GOOS }}-${{ matrix.GOARCH }}${{ matrix.EXT }}
+          GOOS=${{ matrix.GOOS }} go build -o faf-pioneer-${{ matrix.GOOS }}-${{ matrix.GOARCH }}${{ matrix.EXT }} ./cmd/faf-adapter
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
