@@ -57,7 +57,7 @@ func (c *Client) WriteLogEntryToRemote(entries []*applog.LogEntry) error {
 		SetBody(logEntries).
 		Post(url)
 
-	applog.NoRemote().Debug("Log entries are sent to remove server",
+	applog.NoRemote().Debug("Log entries are sent to remote server",
 		zap.Int("entriesCount", len(logEntries)),
 		zap.Any("entries", logEntries),
 	)
