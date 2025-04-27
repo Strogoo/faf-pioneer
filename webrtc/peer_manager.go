@@ -270,6 +270,7 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 	newPeer.onStateChanged = p.onPeerStateChanged
 
 	p.peers[playerId] = newPeer
+	applog.Debug("Peer successfully created", zap.Uint("playerId", playerId))
 	return newPeer
 }
 
