@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+var PeerManager 		*webrtc.PeerManager
+
 type Adapter struct {
 	gpgNetFromGame      chan gpgnet.Message
 	gpgNetToGame        chan gpgnet.Message
@@ -120,6 +122,8 @@ func (a *Adapter) Start() error {
 		a.gpgNetToGame,
 	)
 
+	PeerManager = peerManager
+
 	if peerManager.IsTurnRelayForced() {
 		applog.Debug("Forcing TURN relay on")
 	}
@@ -172,4 +176,8 @@ func (a *Adapter) Start() error {
 
 	peerManager.Start()
 	return nil
+}
+
+func GetPeerManager() *webrtc.PeerManager {
+	return PeerManager
 }
