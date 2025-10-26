@@ -12,6 +12,7 @@ import (
 	"net"
 	"sync"
 	"time"
+	"fmt"
 )
 
 type onPeerCandidatesGatheredCallback = func(*webrtc.SessionDescription, []webrtc.ICECandidate)
@@ -250,6 +251,21 @@ func (p *PeerManager) GetPeerById(playerId uint) (*Peer, bool) {
 	defer p.peersMu.Unlock()
 	peer, ok := p.peers[playerId]
 	return peer, ok
+}
+
+func (p *PeerManager) GetAllPeersStats() (map[string]webrtc.StatsReport, map[string]string) {
+	p.peersMu.Lock()
+	defer p.peersMu.Unlock()
+
+	allPeersStats := make(map[string]webrtc.StatsReport)
+	connectionStates := make(map[string]string)
+
+	for id,p := range(p.peers) {
+		allPeersStats[fmt.Sprintf("%d", id)] = p.connection.GetStats()
+		connectionStates[fmt.Sprintf("%d", id)] = p.connection.ConnectionState().String()
+	}
+
+	return allPeersStats, connectionStates
 }
 
 func (p *PeerManager) GetAllPeerIds() []uint {
