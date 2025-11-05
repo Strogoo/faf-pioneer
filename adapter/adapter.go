@@ -17,6 +17,7 @@ import (
 )
 
 var PeerManager 		*webrtc.PeerManager
+var allTurnServersURLs         []string
 
 type Adapter struct {
 	gpgNetFromGame      chan gpgnet.Message
@@ -78,6 +79,9 @@ func (a *Adapter) Start() error {
 		}
 	}()
 
+
+	specificTurnServers := make(map[string]pionwebrtc.ICEServer)
+
 	turnServer := make([]pionwebrtc.ICEServer, len(sessionGameResponse.Servers))
 	for i, server := range sessionGameResponse.Servers {
 		turnServer[i] = pionwebrtc.ICEServer{
@@ -90,6 +94,18 @@ func (a *Adapter) Start() error {
 		for j, url := range server.Urls {
 			// for Java being Java reasons we unfortunately raped the URLs and need to convert it back.
 			turnServer[i].URLs[j] = strings.ReplaceAll(url, "://", ":")
+
+			// save all urls for UI
+			allTurnServersURLs = append(allTurnServersURLs, turnServer[i].URLs[j])
+
+			// make an individual ICEServer for every URL and then use it when reconnection
+			// initiated from UI with certain url
+			specificTurnServers[turnServer[i].URLs[j]] = pionwebrtc.ICEServer {
+				Username:       server.Username,
+				Credential:     server.Credential,
+				CredentialType: pionwebrtc.ICECredentialTypePassword,
+				URLs:           []string{turnServer[i].URLs[j]},
+			}
 		}
 	}
 
@@ -120,6 +136,7 @@ func (a *Adapter) Start() error {
 		turnServer,
 		iceBreakerEventChannel,
 		a.gpgNetToGame,
+		specificTurnServers,
 	)
 
 	PeerManager = peerManager
@@ -180,4 +197,8 @@ func (a *Adapter) Start() error {
 
 func GetPeerManager() *webrtc.PeerManager {
 	return PeerManager
+}
+
+func GetTurnServersURLs() []string {
+	return allTurnServersURLs
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 	"encoding/json"
 	"slices"
+	"fmt"
 	. "modernc.org/tk9.0"
 	_ "modernc.org/tk9.0/themes/azure"
 )
@@ -19,6 +20,7 @@ var logStrings 			[]string
 var formattedLogs		[]string
 var rawLogs             []string
 var sortedIds           []string
+var turnServersURLs     []string
 var allPeersStats       map[string]webrtc.StatsReport
 var connectionStates    map[string]string
 
@@ -27,15 +29,21 @@ var formattedLogsCount = 0
 var rawLogCount = 0
 var logViewLinesCount = 0
 var currentNumOfIds = 0
+var reconnectButtonsEnabled = 0
 var treeViewNumOfLines = 0
 var showRawLogs = false
 var hideDebug = false
 var clearLogWindow = false
-var connListBoxFirstUpdateDone = false
+var turnServersInserted = false
+var selectedTurnServer = ""
 
 var myApp  = App
+var turnListLabel       *LabelWidget
+var turnListScroll      *TScrollbarWidget
+var selectedTurnLabel   *LabelWidget
+var selectedTurnURL     *LabelWidget
+var turnServersList     *ListboxWidget
 var connTreeView        *TTreeviewWidget
-var connTreeScroll      *TScrollbarWidget
 var notebook            *TNotebookWidget
 var logFrame            *TFrameWidget
 var connInfoFrame       *TFrameWidget
@@ -47,37 +55,55 @@ var hideDebugChkButton  *CheckbuttonWidget
 var connInfoView 		*TextWidget
 var connInfoScroll 		*TScrollbarWidget
 var connIdListBox       *ListboxWidget
+var reconnectButtons    []*ButtonWidget
 
 var rawLogsChButtonVar  bool
 var hideDebugButtonVar  bool
 
 
-var FieldsAsJsonLog = false
-
 func CreateMainWindow(){
 	myApp.WmTitle("FAF Pioneer")
+
+	turnListLabel = Label(Height(2), Anchor("w"), Txt("Available TURN servers:"), Font("Helvetica", 10))
+	selectedTurnLabel = Label(Height(2), Anchor("w"), Txt("Current TURN server:"), Font("Helvetica", 10))
+	selectedTurnURL = Label(Height(2), Anchor("w"), Txt("Auto (force relay ON)"), Font("Helvetica", 10, "bold"))
+
+	// Available TURN servers list
+	turnServersList = Listbox(Width(45), Height(5), Yscrollcommand(
+		func(e *Event) { e.ScrollSet(turnListScroll) }))
+	Bind(turnServersList, "<<ListboxSelect>>", Command(turnServerSelected))
+	turnListScroll = TScrollbar(Command(func(e *Event) { e.Yview(turnServersList) }))
 	
 	// Connections treeview
-	connTreeView = TTreeview(Selectmode("browse"), Columns("1 2 3 4"), Height(10), 
-		Yscrollcommand(func(e *Event) { e.ScrollSet(connTreeScroll) }))
+	connTreeView = TTreeview(Selectmode("browse"), Columns("1 2 3 4 5"), Height(13))
 
-	connTreeView.Column("#0", Anchor("center"), Width(60))
-	connTreeView.Column(1, Anchor("center"), Width(60))
-	connTreeView.Column(2, Anchor("center"), Width(60))
-	connTreeView.Column(3, Anchor("center"), Width(60))
-	connTreeView.Column(4, Anchor("center"), Width(60))
+	connTreeView.Column("#0", Anchor("center"), Width(120))
+	connTreeView.Column(1, Anchor("center"), Width(120))
+	connTreeView.Column(2, Anchor("center"), Width(120))
+	connTreeView.Column(3, Anchor("center"), Width(120))
+	connTreeView.Column(4, Anchor("center"), Width(120))
+	connTreeView.Column(5, Anchor("center"), Width(120))
 
 	connTreeView.Heading("#0", Txt("      ID"), Anchor("center"))
-	connTreeView.Heading(1, Txt("Connection state"), Anchor("center"))
-	connTreeView.Heading(2, Txt("RTT(ping)"), Anchor("center"))
-	connTreeView.Heading(3, Txt("Local"), Anchor("center"))
-	connTreeView.Heading(4, Txt("Remote"), Anchor("center"))
+	connTreeView.Heading(1, Txt(" "), Anchor("center"))
+	connTreeView.Heading(2, Txt("Connection state"), Anchor("center"))
+	connTreeView.Heading(3, Txt("RTT(ping)"), Anchor("center"))
+	connTreeView.Heading(4, Txt("Local"), Anchor("center"))
+	connTreeView.Heading(5, Txt("Remote"), Anchor("center"))
 
-	connTreeScroll = TScrollbar(Command(func(e *Event) { e.Yview(connTreeView) }))
+	// Reconnect buttons (15 buttons as max players count is 16)
+	for i := 0; i < 15; i++ {
+		but := Button(Txt("RECONNECT"), Font("Helvetica", 6, "bold"), Command(func() { reconnectBtnClicked(i) }))
+    	reconnectButtons = append(reconnectButtons, but)
+
+		padyFloat := 8 + float64(i)*4.5
+		Grid(but, Row(1), Column(0), Sticky("NW"), Pady(fmt.Sprintf("%.1f", padyFloat)+"m 0m"),Padx("45m 0m"))
+		but.Configure(State("disabled"))
+	}
 
 	
 	// notebook contains different tabs (Logs, conn info etc.)
-	notebook = TNotebook()
+	notebook = TNotebook(Width(1100))
 	logFrame = TFrame()
 	connInfoFrame = TFrame()
 
@@ -90,7 +116,8 @@ func CreateMainWindow(){
 	
 	//Logs tab 
 	logView = logFrame.Text(Wrap("none"), Setgrid(true), Yscrollcommand(
-		func(e *Event) { e.ScrollSet(logScroll) }))
+		func(e *Event) { e.ScrollSet(logScroll) }), Xscrollcommand(
+		func(e *Event) { e.ScrollSet(logXScroll) }))
 	logScroll = logFrame.TScrollbar(Command(func(e *Event) { e.Yview(logView) }))
 	logXScroll = logFrame.TScrollbar(Command(func(e *Event) { e.Xview(logView) }), Orient("horizontal"))
 
@@ -113,14 +140,22 @@ func CreateMainWindow(){
 	connIdListBox = connInfoFrame.Listbox()
 	Bind(connIdListBox, "<<ListboxSelect>>", Command(infoListIdSelected))
 
- 
 	Grid(connIdListBox, Row(0), Column(0), Sticky("NSW"))
-	Grid(connInfoView, Row(0), Column(0), Columnspan(2), Sticky("NSWE"), Padx("40m"))
+	Grid(connInfoView, Row(0), Column(0), Columnspan(2), Sticky("NSWE"), Padx("40m 0m"))
 	Grid(connInfoScroll, Row(0), Column(2), Sticky("NSWE"), Pady("2m"))
 
-	Grid(connTreeView, Row(0), Sticky("NSWE"), Pady("2m"), Ipadx("1m"), Ipady("1m"))
-	Grid(connTreeScroll, Row(0), Column(1), Sticky("NES"), Pady("2m"))
-	Grid(notebook, Row(1), Sticky("NSWE"))
+
+	// Main grid configuration
+	GridRowConfigure(myApp, 0, Weight(0))
+	GridRowConfigure(myApp, 1, Weight(0))
+	GridRowConfigure(myApp, 2, Weight(10))
+	Grid(turnListLabel, Row(0), Column(0), Sticky("NW"))
+	Grid(selectedTurnLabel, Row(0), Column(0), Sticky("NW"), Pady("0m 0m"), Padx("80m 0m"))
+	Grid(selectedTurnURL, Row(0), Column(0), Sticky("NW"), Pady("8m 0m"), Padx("80m 0m"))
+	Grid(turnServersList, Row(0), Column(0), Sticky("SW"), Pady("1m"), Ipadx("1m"), Ipady("1m"),Pady("9m 0m"))
+	Grid(turnListScroll, Row(0), Column(0), Sticky("NSW"), Pady("1m"), Ipadx("1m"), Ipady("1m"),Padx("70m 0m"), Pady("9m 0m"))
+	Grid(connTreeView, Row(1),  Column(0), Sticky("NW"), Pady("1m"), Ipadx("1m"), Ipady("1m"))
+	Grid(notebook, Row(2), Column(0), Columnspan(2), Sticky("NSWE"))
 	GridRowConfigure(myApp, 0, Weight(1))
 	GridColumnConfigure(myApp, 0, Weight(1))
 
@@ -151,6 +186,29 @@ func hideDebugChkButtonPressed(){
 	}
 }
 
+func reconnectBtnClicked(buttonID int){
+	if len(sortedIds) > buttonID{
+		pm := adapter.GetPeerManager()
+		if pm != nil {
+			playerID, _ := strconv.Atoi(sortedIds[buttonID])
+			pm.HandleReconnection(uint(playerID), true, selectedTurnServer)
+		}
+	}
+}
+
+func turnServerSelected(){
+	selected := turnServersList.Curselection()
+
+	if len(selected) > 0 {
+		selectedURL := turnServersList.Get( strconv.Itoa(selected[0]))
+		if len(selectedURL) > 0 {
+			selectedTurnServer = selectedURL[0]
+			selectedTurnURL.Configure(Txt(selectedTurnServer))
+			connInfoView.Insert(END,  godump.DumpJSONStr(selectedTurnServer) +" ", "", "\n")
+		}
+	}
+}
+
 func infoListIdSelected(){
 	selected := connIdListBox.Curselection()
 
@@ -174,6 +232,19 @@ func refreshUI() {
 	refreshLogs()
 	refreshConnStats()
 	TclAfter(time.Second * 1, refreshUI)
+}
+
+func refreshTurnServers() {
+	turnServersInserted = true
+
+	turnServersList.Insert(0, "Auto (force relay OFF)")
+	turnServersList.Insert(0, "Auto (force relay ON)")
+
+	for _,server := range(turnServersURLs) {
+		if !strings.Contains(server, "stun") {
+			turnServersList.Insert(0, server)
+		}
+	}
 }
 
 func refreshConnInfoListIds() {
@@ -343,10 +414,14 @@ func refreshConnStats(){
 			}
 		}
 
-		if !connListBoxFirstUpdateDone{
-			if len(allPeersStats) != currentNumOfIds {
-				refreshConnInfoListIds()
-			}
+		if len(allPeersStats) != currentNumOfIds {
+			refreshConnInfoListIds()
+		}
+
+		if len(turnServersURLs) == 0 {
+			turnServersURLs = adapter.GetTurnServersURLs()
+		} else if !turnServersInserted {
+			refreshTurnServers()
 		}
 	}
 
@@ -425,9 +500,20 @@ func refreshConnStats(){
 
 				//https://gitlab.com/cznic/tk9.0/-/blob/master/themes/azure/_examples/example.go#L205
 				tvData := []any{"", treeViewNumOfLines, id,
-					"{"+connectionState+"}"+" "+"{"+ping+"}"+" "+"{"+activeLocalCandiType+"}"+" "+"{"+activeRemoteCandiType+"}"}
+					"{}"+" "+"{"+connectionState+"}"+" "+"{"+ping+"}"+" "+"{"+activeLocalCandiType+"}"+" "+"{"+activeRemoteCandiType+"}"}
 
 				connTreeView.Insert(tvData[0], "end", Id(tvData[1]), Txt(tvData[2]), Value(tvData[3]))
+			}
+		}
+	}
+
+	numOfIds := len(sortedIds)
+	if reconnectButtonsEnabled != numOfIds {
+		for i,b := range(reconnectButtons){
+			if i < numOfIds {
+				b.Configure((State("normal")))
+			} else {
+				b.Configure((State("disabled")))
 			}
 		}
 	}

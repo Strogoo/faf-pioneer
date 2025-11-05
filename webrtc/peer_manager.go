@@ -55,6 +55,8 @@ type PeerManager struct {
 	forceTurnRelay       bool
 	reconnectionRequests chan uint
 	gpgNetToGameChannel  chan<- gpgnet.Message
+	specificTurnServers  map[string]webrtc.ICEServer
+	defaultTurnServer    []webrtc.ICEServer
 }
 
 func NewPeerManager(
@@ -66,6 +68,7 @@ func NewPeerManager(
 	turnServer []webrtc.ICEServer,
 	icebreakerEvents <-chan icebreaker.EventMessage,
 	gpgNetToGameChannel chan<- gpgnet.Message,
+	specificTurnServers map[string]webrtc.ICEServer,
 ) *PeerManager {
 	peerManager := PeerManager{
 		ctx:                  ctx,
@@ -79,6 +82,8 @@ func NewPeerManager(
 		forceTurnRelay:       launcherInfo.ForceTurnRelay || sessionInfo.ForceRelay,
 		reconnectionRequests: make(chan uint, maxLobbyPeers),
 		gpgNetToGameChannel:  gpgNetToGameChannel,
+		specificTurnServers:  specificTurnServers,
+		defaultTurnServer:    turnServer,
 	}
 
 	// Note:
@@ -118,14 +123,14 @@ func (p *PeerManager) runReconnectionManagement() {
 	for {
 		select {
 		case peerId := <-p.reconnectionRequests:
-			p.handleReconnection(peerId)
+			p.HandleReconnection(peerId, false, "")
 		case <-p.ctx.Done():
 			return
 		}
 	}
 }
 
-func (p *PeerManager) handleReconnection(playerId uint) {
+func (p *PeerManager) HandleReconnection(playerId uint, calledFromUI bool, turnURL string) {
 	applog.Debug("Handling reconnection for peer", zap.Uint("playerId", playerId))
 
 	p.peersMu.Lock()
@@ -136,10 +141,31 @@ func (p *PeerManager) handleReconnection(playerId uint) {
 	}
 	p.peersMu.Unlock()
 
-	if peer.IsActive() || (peer.connection != nil &&
-		peer.connection.ConnectionState() == webrtc.PeerConnectionStateConnecting) {
-		applog.Info("Peer already active/connecting, skipping reconnection", zap.Uint("peer", playerId))
-		return
+	if calledFromUI {
+		switch turnURL {
+			case "Auto (force relay ON)":
+				peer.forceTurnRelay = true
+				p.turnServer = p.defaultTurnServer
+				applog.Info("---Reconnecting with Auto (force relay ON)", zap.Uint("peer", playerId))		
+			case "Auto (force relay OFF)":
+				peer.forceTurnRelay = false
+				p.turnServer = p.defaultTurnServer
+				applog.Info("---Reconnecting with Auto (force relay OFF)", zap.Uint("peer", playerId))
+			default:
+				peer.forceTurnRelay = true
+				if serv, ok := p.specificTurnServers[turnURL]; ok {
+					p.turnServer = []webrtc.ICEServer{serv}
+					applog.Info("---Reconnecting with specific TURN: "+turnURL, zap.Uint("peer", playerId))
+				} else {
+					p.turnServer = p.defaultTurnServer
+				}
+		}
+	} else {
+		if peer.IsActive() || (peer.connection != nil &&
+			peer.connection.ConnectionState() == webrtc.PeerConnectionStateConnecting) {
+			applog.Info("Peer already active/connecting, skipping reconnection", zap.Uint("peer", playerId))
+			return
+		}
 	}
 
 	applog.Info("Connecting to peer", zap.Uint("playerId", playerId))
