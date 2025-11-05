@@ -14,9 +14,12 @@ import (
 	"go.uber.org/zap"
 	"strings"
 	"time"
+	"sync"
 )
 
-var PeerManager 		*webrtc.PeerManager
+var PeerManager     *webrtc.PeerManager
+var userNicknames   =make(map[string]string)
+var mu              sync.Mutex
 
 type Adapter struct {
 	gpgNetFromGame      chan gpgnet.Message
@@ -71,15 +74,25 @@ func (a *Adapter) Start() error {
 			case <-a.ctx.Done():
 				return
 			case <-time.After(backoff):
-				if backoff < 30*time.Second {
+				// Better don't increase delay and just use fixed 1 sec value
+				// Might be critical in some situations when you want to restore conn as fast as possible
+				if backoff < 0*time.Second {
 					backoff *= 2
 				}
 			}
 		}
 	}()
 
+
 	turnServer := make([]pionwebrtc.ICEServer, len(sessionGameResponse.Servers))
 	for i, server := range sessionGameResponse.Servers {
+		// Hardcoded until we remove FAF's cotrun from the list
+		if len(server.Urls) > 0 {
+			if strings.Contains(server.Urls[0], "139.162.142.250") {
+				continue
+			}
+		}
+
 		turnServer[i] = pionwebrtc.ICEServer{
 			Username:       server.Username,
 			Credential:     server.Credential,
@@ -146,6 +159,30 @@ func (a *Adapter) Start() error {
 				if baseMsg, isBase := msg.(*gpgnet.BaseMessage); isBase {
 					parsedMsg, parseErr := baseMsg.TryParse()
 					if parseErr == nil {
+						// Save nicknames for UI	
+						cmd := parsedMsg.GetCommand()
+						if cmd == "JoinGame" || cmd == "ConnectToPeer"{
+							nickname := ""
+							playerId := ""
+							for i, item := range parsedMsg.GetArgs() {
+								switch v := item.(type) {
+								case int32:
+									if i == 2 {
+										playerId = fmt.Sprintf("%d", v)
+									}
+								case string:
+									if i == 1 {
+										nickname = v
+									}
+								}
+								if playerId != "" && nickname != "" {
+									mu.Lock()
+									userNicknames[playerId] = nickname
+									mu.Unlock()
+								}
+							}
+						}
+
 						processed := gpgNetServer.ProcessMessage(parsedMsg)
 						a.gpgNetToGame <- processed
 						continue
@@ -180,4 +217,14 @@ func (a *Adapter) Start() error {
 
 func GetPeerManager() *webrtc.PeerManager {
 	return PeerManager
+}
+
+func GetNicknames() map[string]string {
+	mu.Lock()
+	nnames  := make(map[string]string, len(userNicknames))
+	for k, v := range userNicknames {
+        nnames[k] = v
+    }
+	mu.Unlock()
+	return nnames
 }

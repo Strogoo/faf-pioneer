@@ -3,94 +3,144 @@ package dbgwnd
 import (
 	"faf-pioneer/applog"
 	"faf-pioneer/adapter"
+	"faf-pioneer/webrtc"
 	"strings"
-	"github.com/pion/webrtc/v4"
+	pionwebrtc "github.com/pion/webrtc/v4"
 	"strconv"
 	"github.com/goforj/godump"
 	"os"
 	"time"
 	"encoding/json"
 	"slices"
+	"fmt"
 	. "modernc.org/tk9.0"
 	_ "modernc.org/tk9.0/themes/azure"
 )
+
+const (
+	disableRecButnOnNewConnect = 45 //seconds
+	disableRecButnOnManualRec  = 15 //seconds
+)
+
+var pm                  *webrtc.PeerManager
 
 var logStrings 			[]string
 var formattedLogs		[]string
 var rawLogs             []string
 var sortedIds           []string
-var allPeersStats       map[string]webrtc.StatsReport
+var allPeersStats       map[string]pionwebrtc.StatsReport
 var connectionStates    map[string]string
+var turnIds             map[string][]int
+var turnsNameById       map[int]string
+var idsToDisable        []string
+var disabledBtnsTimers  = make(map[string]int)
+var oldPeer             = make(map[string]bool)
+var playerNames         = make(map[string]string)
 
 var logFilePath = ""
 var formattedLogsCount = 0
 var rawLogCount = 0
 var logViewLinesCount = 0
-var currentNumOfIds = 0
+var numOfIdsInConnInfoTab = 0
+var reconnectButtonsEnabled = 0
 var treeViewNumOfLines = 0
 var showRawLogs = false
 var hideDebug = false
 var clearLogWindow = false
-var connListBoxFirstUpdateDone = false
+var relaysUpdated = false
 
 var myApp  = App
+var forceRelayLabel     *LabelWidget
 var connTreeView        *TTreeviewWidget
-var connTreeScroll      *TScrollbarWidget
 var notebook            *TNotebookWidget
 var logFrame            *TFrameWidget
 var connInfoFrame       *TFrameWidget
-var logView 			*TextWidget
-var logScroll 			*TScrollbarWidget
-var logXScroll 			*TScrollbarWidget
+var relayFrame          *TFrameWidget
+var logView             *TextWidget
+var logScroll           *TScrollbarWidget
+var logXScroll          *TScrollbarWidget
+var relayView           *TextWidget
+var relayScroll         *TScrollbarWidget
 var rawLogsChkButton 	*CheckbuttonWidget
 var hideDebugChkButton  *CheckbuttonWidget
-var connInfoView 		*TextWidget
-var connInfoScroll 		*TScrollbarWidget
+var connInfoView        *TextWidget
+var connInfoScroll      *TScrollbarWidget
 var connIdListBox       *ListboxWidget
+var reconnectButtons    []*ButtonWidget
+var reconnectNoRelayBtn []*ButtonWidget
 
 var rawLogsChButtonVar  bool
 var hideDebugButtonVar  bool
 
 
-var FieldsAsJsonLog = false
-
 func CreateMainWindow(){
 	myApp.WmTitle("FAF Pioneer")
-	
-	// Connections treeview
-	connTreeView = TTreeview(Selectmode("browse"), Columns("1 2 3 4"), Height(10), 
-		Yscrollcommand(func(e *Event) { e.ScrollSet(connTreeScroll) }))
 
-	connTreeView.Column("#0", Anchor("center"), Width(60))
-	connTreeView.Column(1, Anchor("center"), Width(60))
-	connTreeView.Column(2, Anchor("center"), Width(60))
-	connTreeView.Column(3, Anchor("center"), Width(60))
-	connTreeView.Column(4, Anchor("center"), Width(60))
+	// Shows if "force relay" is ON or OFF
+	forceRelayLabel = Label(Height(2), Anchor("w"), Txt("Force relay:"), Font("Helvetica", 12))
+
+	// Connections treeview
+	connTreeView = TTreeview(Selectmode("browse"), Columns("1 2 3 4 5 6 7"), Height(13))
+
+	connTreeView.Column("#0", Anchor("center"), Width(120))
+	connTreeView.Column(1, Anchor("center"), Width(120))
+	connTreeView.Column(2, Anchor("center"), Width(100))
+	connTreeView.Column(3, Anchor("center"), Width(40))
+	connTreeView.Column(4, Anchor("center"), Width(120))
+	connTreeView.Column(5, Anchor("center"), Width(120))
+	connTreeView.Column(6, Anchor("center"), Width(180))
+	connTreeView.Column(7, Anchor("center"), Width(180))
 
 	connTreeView.Heading("#0", Txt("      ID"), Anchor("center"))
-	connTreeView.Heading(1, Txt("Connection state"), Anchor("center"))
-	connTreeView.Heading(2, Txt("RTT(ping)"), Anchor("center"))
-	connTreeView.Heading(3, Txt("Local"), Anchor("center"))
-	connTreeView.Heading(4, Txt("Remote"), Anchor("center"))
+	connTreeView.Heading(1, Txt("Name"), Anchor("center"))
+	connTreeView.Heading(2, Txt(" "), Anchor("center"))
+	connTreeView.Heading(3, Txt(" "), Anchor("center"))
+	connTreeView.Heading(4, Txt("Connection state"), Anchor("center"))
+	connTreeView.Heading(5, Txt("RTT(ping)"), Anchor("center"))
+	connTreeView.Heading(6, Txt("Local"), Anchor("center"))
+	connTreeView.Heading(7, Txt("Remote"), Anchor("center"))
 
-	connTreeScroll = TScrollbar(Command(func(e *Event) { e.Yview(connTreeView) }))
+	// Reconnect buttons (15 buttons as max players count is 16)
+	for i := 0; i < 15; i++ {
+		but := Button(Txt("RECONNECT"), Font("Helvetica", 6, "bold"), Command(func() { reconnectBtnClicked(i) }))
+    	reconnectButtons = append(reconnectButtons, but)
+
+		padyFloat := 8 + float64(i)*4.5
+		Grid(but, Row(1), Column(0), Sticky("NW"), Pady(fmt.Sprintf("%.1f", padyFloat)+"m 0m"),Padx("80m 0m"))
+		but.Configure(State("disabled"))
+	}
+
+	// Reconnect NO RELAY buttons
+	// for i := 0; i < 15; i++ {
+	// 	but := Button(Txt(" ! "), Font("Helvetica", 6, "bold"), Command(func() { reconnNoRelaytBtnClicked(i) }))
+    // 	reconnectNoRelayBtn = append(reconnectNoRelayBtn, but)
+
+	// 	padyFloat := 8 + float64(i)*4.5
+	// 	Grid(but, Row(1), Column(0), Sticky("NW"), Pady(fmt.Sprintf("%.1f", padyFloat)+"m 0m"),Padx("70m 0m"))
+	// 	but.Configure(State("disabled"))
+	// }
 
 	
 	// notebook contains different tabs (Logs, conn info etc.)
-	notebook = TNotebook()
+	notebook = TNotebook(Width(1100))
 	logFrame = TFrame()
 	connInfoFrame = TFrame()
+	relayFrame = TFrame()
 
 	notebook.Add(logFrame, Txt("Logs"))
 	notebook.Add(connInfoFrame, Txt("Connection info"))
+	notebook.Add(relayFrame, Txt("Relays"))
 	GridRowConfigure(logFrame, 0, Weight(1))
 	GridColumnConfigure(logFrame, 0, Weight(1))
 	GridRowConfigure(connInfoFrame, 0, Weight(1))
 	GridColumnConfigure(connInfoFrame, 0, Weight(1))
+	GridRowConfigure(relayFrame, 0, Weight(1))
+	GridColumnConfigure(relayFrame, 0, Weight(1))
 	
 	//Logs tab 
 	logView = logFrame.Text(Wrap("none"), Setgrid(true), Yscrollcommand(
-		func(e *Event) { e.ScrollSet(logScroll) }))
+		func(e *Event) { e.ScrollSet(logScroll) }), Xscrollcommand(
+		func(e *Event) { e.ScrollSet(logXScroll) }))
 	logScroll = logFrame.TScrollbar(Command(func(e *Event) { e.Yview(logView) }))
 	logXScroll = logFrame.TScrollbar(Command(func(e *Event) { e.Xview(logView) }), Orient("horizontal"))
 
@@ -113,14 +163,27 @@ func CreateMainWindow(){
 	connIdListBox = connInfoFrame.Listbox()
 	Bind(connIdListBox, "<<ListboxSelect>>", Command(infoListIdSelected))
 
- 
 	Grid(connIdListBox, Row(0), Column(0), Sticky("NSW"))
-	Grid(connInfoView, Row(0), Column(0), Columnspan(2), Sticky("NSWE"), Padx("40m"))
+	Grid(connInfoView, Row(0), Column(0), Columnspan(2), Sticky("NSWE"), Padx("40m 0m"))
 	Grid(connInfoScroll, Row(0), Column(2), Sticky("NSWE"), Pady("2m"))
 
-	Grid(connTreeView, Row(0), Sticky("NSWE"), Pady("2m"), Ipadx("1m"), Ipady("1m"))
-	Grid(connTreeScroll, Row(0), Column(1), Sticky("NES"), Pady("2m"))
-	Grid(notebook, Row(1), Sticky("NSWE"))
+	// Relays tab
+	relayView = relayFrame.Text(Wrap("none"), Setgrid(true), Yscrollcommand(
+		func(e *Event) { e.ScrollSet(relayScroll) }))
+	relayScroll = relayFrame.TScrollbar(Command(func(e *Event) { e.Yview(relayView) }))
+
+	Grid(relayView, Row(0), Sticky("NSWE"))
+	Grid(relayScroll, Row(0), Column(1), Sticky("NSWE"), Pady("2m"))
+
+	// Main grid configuration
+	GridRowConfigure(myApp, 0, Weight(0))
+	GridRowConfigure(myApp, 1, Weight(0))
+	GridRowConfigure(myApp, 2, Weight(10))
+
+	Grid(forceRelayLabel, Row(0), Column(0), Sticky("NW"), Pady("0m 0m"), Padx("0m 0m"))
+	
+	Grid(connTreeView, Row(1),  Column(0), Sticky("NW"), Pady("1m"), Ipadx("1m"), Ipady("1m"))
+	Grid(notebook, Row(2), Column(0), Columnspan(2), Sticky("NSWE"))
 	GridRowConfigure(myApp, 0, Weight(1))
 	GridColumnConfigure(myApp, 0, Weight(1))
 
@@ -151,6 +214,34 @@ func hideDebugChkButtonPressed(){
 	}
 }
 
+func reconnNoRelaytBtnClicked(buttonID int){
+	if len(sortedIds) > buttonID{
+		if pm != nil {
+			name := ""
+			if n, ok := playerNames[sortedIds[buttonID]]; ok {
+					name = n
+			}
+			answer := MessageBox(Detail("Are you sure you want to try to connect directly? This will expose your real IP address to peer: " +
+				sortedIds[buttonID] + " " + name), Type("yesno"))
+			connInfoView.Insert(END,  answer +" ", "", "\n")
+
+			if answer == "yes"{
+				playerID, _ := strconv.Atoi(sortedIds[buttonID])
+				pm.HandleManualNoRelayReconnRequest(uint(playerID))
+			}
+		}
+	}
+}
+
+func reconnectBtnClicked(buttonID int){
+	if len(sortedIds) > buttonID{
+		if pm != nil {
+			playerID, _ := strconv.Atoi(sortedIds[buttonID])
+			pm.HandleManualReconnectRequest(uint(playerID))
+		}
+	}
+}
+
 func infoListIdSelected(){
 	selected := connIdListBox.Curselection()
 
@@ -177,10 +268,10 @@ func refreshUI() {
 }
 
 func refreshConnInfoListIds() {
-	if currentNumOfIds != 0 {
-		connIdListBox.Delete("0", strconv.Itoa(currentNumOfIds - 1))
+	if numOfIdsInConnInfoTab != 0 {
+		connIdListBox.Delete("0", strconv.Itoa(numOfIdsInConnInfoTab - 1))
 	}
-	currentNumOfIds = len(sortedIds)
+	numOfIdsInConnInfoTab = len(sortedIds)
 
 	for i := len(sortedIds) - 1; i >= 0; i-- {
 		connIdListBox.Insert(0, sortedIds[i])
@@ -323,9 +414,12 @@ func formatLogLines() {
 }
 
 func refreshConnStats(){
-	pm := adapter.GetPeerManager()
+	if pm == nil {
+		pm = adapter.GetPeerManager()
+	}
+	
 	if pm != nil {
-		allPeersStats, connectionStates = pm.GetAllPeersStats()
+		allPeersStats, connectionStates, turnIds, idsToDisable = pm.GetAllPeersStats()
 
 		//sort all ids so the they always displayed in the right order
 		sortedIds = nil
@@ -343,9 +437,25 @@ func refreshConnStats(){
 			}
 		}
 
-		if !connListBoxFirstUpdateDone{
-			if len(allPeersStats) != currentNumOfIds {
-				refreshConnInfoListIds()
+		if len(allPeersStats) != numOfIdsInConnInfoTab {
+			refreshConnInfoListIds()
+		}
+
+		refreshButtons()
+
+		if !relaysUpdated {
+			relaysUpdated = true
+			urls, turnNameById, forceRelay := pm.GetTurnURLs()
+			turnsNameById = turnNameById
+
+			if forceRelay {
+				forceRelayLabel.Configure(Txt("Force relay: ON"))
+			} else {
+				forceRelayLabel.Configure(Txt("Force relay: OFF"))
+			}
+
+			for _, st := range urls {
+				relayView.Insert(END, st+" ", "", "\n")
 			}
 		}
 	}
@@ -356,9 +466,13 @@ func refreshConnStats(){
 		for treeViewNumOfLines > 0 {
 			connTreeView.Delete(strconv.Itoa(treeViewNumOfLines))
 			treeViewNumOfLines -= 1
-		}		
+		}
+		
 		
 		for _, id := range(sortedIds) {
+			if _, ok := oldPeer[id]; !ok {
+				oldPeer[id] = true
+			}
 			if stats, ok := allPeersStats[id]; ok {
 				localCandidates := make(map[string]string)
 				remoteCandidates := make(map[string]string)
@@ -387,10 +501,16 @@ func refreshConnStats(){
 									case "local-candidate":
 										if candidateType,ok := result["candidateType"].(string); ok {
 											localCandidates[idVal] = candidateType
+											if candidateIp,ok := result["ip"].(string); ok {
+												localCandidates[idVal] += " "+ candidateIp
+											}
 										}
 									case "remote-candidate":
 										if candidateType,ok := result["candidateType"].(string); ok {
 											remoteCandidates[idVal] = candidateType
+											if candidateIp,ok := result["ip"].(string); ok {
+												remoteCandidates[idVal] += " "+ candidateIp
+											}
 										}
 									case "candidate-pair":
 										if nominated,ok := result["nominated"].(bool); ok {
@@ -413,22 +533,113 @@ func refreshConnStats(){
 					}
 					
 				}
+
+				localTurnName := ""
+				remoteTurnName := ""
+
+				if tIds, ok := turnIds[id]; ok {
+					if len(tIds) > 1 {
+						if tIds[0] != 0 {
+							localTurnName = turnsNameById[tIds[0]]
+						}
+						if tIds[1] != 0 {
+							remoteTurnName = turnsNameById[tIds[1]]
+						}
+					}
+				}
 				
 				if localCandiType, ok := localCandidates[activeLocalCandidateId]; ok {
-					activeLocalCandiType = localCandiType
+					activeLocalCandiType = localCandiType + " " + localTurnName
 				}
 				if remoteCandiType, ok := remoteCandidates[activeRemoteCandidateId]; ok {
-					activeRemoteCandiType = remoteCandiType
+					activeRemoteCandiType = remoteCandiType + " " + remoteTurnName
+				}
+				
+				timer := ""
+				if _, ok := disabledBtnsTimers[id]; ok {
+					timer = strconv.Itoa(disabledBtnsTimers[id])+"s"
+				}
+
+				playerName := "-"
+				if name, ok := playerNames[id]; ok {
+					playerName = name
+				} else {
+					playerNames = adapter.GetNicknames()
 				}
 
 				treeViewNumOfLines += 1
 
 				//https://gitlab.com/cznic/tk9.0/-/blob/master/themes/azure/_examples/example.go#L205
 				tvData := []any{"", treeViewNumOfLines, id,
-					"{"+connectionState+"}"+" "+"{"+ping+"}"+" "+"{"+activeLocalCandiType+"}"+" "+"{"+activeRemoteCandiType+"}"}
+					"{"+playerName+"}"+" "+"{}"+" "+"{"+timer+"}"+" "+"{"+connectionState+"}"+" "+"{"+ping+"}"+" "+"{"+activeLocalCandiType+"}"+" "+"{"+activeRemoteCandiType+"}"}
 
 				connTreeView.Insert(tvData[0], "end", Id(tvData[1]), Txt(tvData[2]), Value(tvData[3]))
 			}
+		}
+	}
+}
+
+func refreshButtons() {
+	numOfIds := len(sortedIds)
+
+	if reconnectButtonsEnabled != numOfIds {
+		// normal buttons
+		for i,b := range(reconnectButtons){
+			reconnectButtonsEnabled += 1
+			if i < numOfIds {
+				b.Configure((State("normal")))
+			} else {
+				b.Configure((State("disabled")))
+			}
+		}
+
+		// no relay "!" buttons
+		// for i,b := range(reconnectNoRelayBtn){
+		// 	if i < numOfIds {
+		// 		b.Configure((State("normal")))
+		// 	} else {
+		// 		b.Configure((State("disabled")))
+		// 	}
+		// }
+	}
+
+	if len(oldPeer) < len(sortedIds) {
+		for i,_ := range(sortedIds) {
+			if _, ok := oldPeer[sortedIds[i]]; !ok {
+				disabledBtnsTimers[sortedIds[i]] = disableRecButnOnNewConnect
+			}
+		}
+	}
+
+	if len(idsToDisable) > 0 || len(disabledBtnsTimers) > 0 {
+		for i,_ := range(disabledBtnsTimers) {
+			if disabledBtnsTimers[i] > 0 {
+				disabledBtnsTimers[i] -= 1
+			} else {
+				delete(disabledBtnsTimers, i)
+			}
+		}
+
+		for i,_ := range(sortedIds) {
+			if slices.Contains(idsToDisable, sortedIds[i]){
+				disabledBtnsTimers[sortedIds[i]] = disableRecButnOnManualRec
+			}
+
+			// normal buttons
+			if _, ok := disabledBtnsTimers[sortedIds[i]]; ok {
+				reconnectButtons[i].Configure((State("disabled")))
+			} else {
+				reconnectButtons[i].Configure((State("normal")))
+			}
+
+			// no relay "!" buttons
+			// if _, ok := disabledBtnsTimers[sortedIds[i]]; ok {
+			// 	reconnectNoRelayBtn[i].Configure((State("disabled")))
+			// } else {
+			// 	reconnectNoRelayBtn[i].Configure((State("normal")))
+			// }
+
+			idsToDisable = nil
 		}
 	}
 }
