@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 	"os/signal"
 	"syscall"
+	"os"
 )
 
 func main() {
@@ -47,6 +48,8 @@ func main() {
 		if err = adapterInstance.Start(); err != nil {
 			applog.Error("Failed to start adapter", zap.Error(err))
 		}
+
+		os.Exit(0)
 	}()
 
 	dbgwnd.CreateMainWindow()
