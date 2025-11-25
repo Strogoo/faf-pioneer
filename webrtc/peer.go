@@ -47,6 +47,9 @@ type Peer struct {
 	localAddrReadyOnce    sync.Once
 	remoteAddress         *net.IPAddr
 	creationTimeSeconds   int64
+	numOfManualReconns    int
+	manualReconnIsActive  bool
+	peerSpecificTurn      []webrtc.ICEServer
 }
 
 func (p *Peer) IsOfferer() bool {
@@ -135,6 +138,8 @@ func CreatePeer(
 		webrtcApi:            webrtcApi,
 		forceTurnRelay:       peerManager.forceTurnRelay,
 		creationTimeSeconds:  time.Now().Unix(),
+		numOfManualReconns:   0,
+		manualReconnIsActive: false, 
 	}
 
 	return &peer, nil

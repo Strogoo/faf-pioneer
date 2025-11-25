@@ -14,6 +14,7 @@ import (
 	"time"
 	"fmt"
 	"strconv"
+	"math"
 )
 
 type onPeerCandidatesGatheredCallback = func(*webrtc.SessionDescription, []webrtc.ICECandidate)
@@ -56,7 +57,6 @@ type PeerManager struct {
 	forceTurnRelay       bool
 	reconnectionRequests chan uint
 	gpgNetToGameChannel  chan<- gpgnet.Message
-	defaultTurnServer    []webrtc.ICEServer
 }
 
 func NewPeerManager(
@@ -81,7 +81,6 @@ func NewPeerManager(
 		forceTurnRelay:       true,
 		reconnectionRequests: make(chan uint, maxLobbyPeers),
 		gpgNetToGameChannel:  gpgNetToGameChannel,
-		defaultTurnServer:    turnServer,
 	}
 
 	// Note:
@@ -128,7 +127,7 @@ func (p *PeerManager) runReconnectionManagement() {
 	}
 }
 
-func (p *PeerManager) handleReconnection(playerId uint, calledFromUI bool, forceReconnect bool) {
+func (p *PeerManager) handleReconnection(playerId uint, manualReconnRequest bool, forceReconnect bool) {
 	applog.Debug("Handling reconnection for peer", zap.Uint("playerId", playerId))
 
 	p.peersMu.Lock()
@@ -139,34 +138,37 @@ func (p *PeerManager) handleReconnection(playerId uint, calledFromUI bool, force
 	}
 	p.peersMu.Unlock()
 
-	if !forceReconnect {
-		if calledFromUI {
-			peer.forceTurnRelay = true
-			p.turnServer = p.defaultTurnServer
-		} else {
-			if peer.IsActive() || (peer.connection != nil &&
-				peer.connection.ConnectionState() == webrtc.PeerConnectionStateConnecting) {
-				applog.Info("Peer already active/connecting, skipping reconnection", zap.Uint("peer", playerId))
-				return
-			}
+	if !forceReconnect && !manualReconnRequest {
+		if peer.IsActive() || (peer.connection != nil &&
+			peer.connection.ConnectionState() == webrtc.PeerConnectionStateConnecting) {
+			applog.Info("Peer already active/connecting, skipping reconnection", zap.Uint("peer", playerId))
+			return
 		}
 	}
+
 	
-	applog.Info("Connecting to peer", zap.Uint("playerId", playerId))
+	if !manualReconnRequest {
+		applog.Info("Connecting to peer normally", zap.Uint("playerId", playerId))
+		if err := peer.ConnectOnce(p.turnServer); err != nil {
+			applog.Error("Peer normal connection failed", zap.Uint("peer", playerId), zap.Error(err))
 
-	if err := peer.ConnectOnce(p.turnServer); err != nil {
-		applog.Error("Peer connection failed", zap.Uint("peer", playerId), zap.Error(err))
-
-		// Retry after `peerReconnectionInterval`.
-		select {
-		case <-p.ctx.Done():
-		case <-time.After(peerReconnectionInterval):
-			peer.reconnectMu.Lock()
-			peer.reconnectionScheduled = false
-			peer.reconnectMu.Unlock()
-			p.scheduleReconnection(playerId)
+			// Retry after `peerReconnectionInterval`.
+			select {
+			case <-p.ctx.Done():
+			case <-time.After(peerReconnectionInterval):
+				peer.reconnectMu.Lock()
+				peer.reconnectionScheduled = false
+				peer.reconnectMu.Unlock()
+				p.scheduleReconnection(playerId)
+			}
+			return
 		}
-		return
+	} else {
+		applog.Info("Connecting to peer with specific TURN", zap.Uint("playerId", playerId))
+		if err := peer.ConnectOnce(peer.peerSpecificTurn); err != nil {
+			applog.Error("Peer connection with specific TURN failed", zap.Uint("peer", playerId), zap.Error(err))
+		}
+		peer.manualReconnIsActive = false
 	}
 
 	applog.Info("Peer connected successfully", zap.Uint("peer", playerId))
@@ -388,28 +390,32 @@ func (p *PeerManager) onPeerStateChanged(peer *Peer, state webrtc.PeerConnection
 
 	switch state {
 	case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
-		select {
-		case <-peer.localAddrReady:
-		default:
-			peer.localAddrReadyOnce.Do(func() {
-				close(peer.localAddrReady)
-			})
+		if !peer.manualReconnIsActive {
+			select {
+			case <-peer.localAddrReady:
+			default:
+				peer.localAddrReadyOnce.Do(func() {
+					close(peer.localAddrReady)
+				})
+			}
+
+			applog.FromContext(peer.ctx).Info(
+				"Peer connection failed or closed, scheduling immediate reconnection")
+
+			// if state == webrtc.PeerConnectionStateFailed && peer.forceTurnRelay {
+			// 	applog.FromContext(peer.ctx).Info("Switching to fallback relay All policy")
+			// 	peer.forceTurnRelay = false
+			// }
+
+			//peer.reconnectMu.Lock()
+			//peer.reconnectionScheduled = false
+			//peer.reconnectMu.Unlock()
+
+			p.scheduleReconnection(peer.PeerId())
+			break
+		} else {
+			applog.Debug("Peer is already reconnecting manually. Skipping 'failed or closed' case")
 		}
-
-		applog.FromContext(peer.ctx).Info(
-			"Peer connection failed or closed, scheduling immediate reconnection")
-
-		// if state == webrtc.PeerConnectionStateFailed && peer.forceTurnRelay {
-		// 	applog.FromContext(peer.ctx).Info("Switching to fallback relay All policy")
-		// 	peer.forceTurnRelay = false
-		// }
-
-		//peer.reconnectMu.Lock()
-		//peer.reconnectionScheduled = false
-		//peer.reconnectMu.Unlock()
-
-		p.scheduleReconnection(peer.PeerId())
-		break
 	case webrtc.PeerConnectionStateDisconnected:
 		// WebRTC documentation saying:
 		// The ICE Agent has determined that connectivity is currently lost for this RTCIceTransport.
@@ -477,6 +483,8 @@ func (p *PeerManager) onPeerStateChanged(peer *Peer, state webrtc.PeerConnection
 	}
 }
 
+var manualReconnectionMessage icebreaker.CandidatesMessage
+
 func (p *PeerManager) onPeerCandidatesGathered(remotePeer uint) onPeerCandidatesGatheredCallback {
 	return func(description *webrtc.SessionDescription, candidates []webrtc.ICECandidate) {
 		err := p.icebreakerClient.SendEvent(
@@ -490,6 +498,22 @@ func (p *PeerManager) onPeerCandidatesGathered(remotePeer uint) onPeerCandidates
 				Session:    description,
 				Candidates: candidates,
 			})
+
+			// A fake candidate message that is used in manual reconnection process
+			// Will be fixed in future
+			if manualReconnectionMessage.GameID == 0 {
+				manualReconnectionMessage = icebreaker.CandidatesMessage{
+					BaseEvent: icebreaker.BaseEvent{
+						EventType:   icebreaker.EventKindCandidates,
+						GameID:      p.gameId,
+						SenderID:    p.localUserId,
+						RecipientID: &remotePeer,
+					},
+					Session:    description,
+					Candidates: candidates,
+				}
+				manualReconnectionMessage.Candidates = make([]webrtc.ICECandidate, 0)
+			}
 
 		if err != nil {
 			applog.Error("Failed to send candidates",
@@ -634,10 +658,63 @@ func (p *PeerManager) initialConnectionWatcher(playerId uint) {
 }
 
 
-
 func (p *PeerManager) HandleReconnectRequestFromUI(playerId uint) {
-	applog.Info("Starting manual reconnection for peer", zap.Uint("playerId", playerId))
+	peerAsString := strconv.FormatUint(uint64(playerId), 10)
+	p.peersMu.Lock()
+	peer, ok := p.peers[playerId]
+	if ok {
+		peer.manualReconnIsActive = true
+		peer.numOfManualReconns += 1
+		peer.peerSpecificTurn = nil
 
+		numOfTurns := len(p.turnServer)
+		totalCombinations := numOfTurns * numOfTurns
+		isLeader := p.localUserId < playerId
+		numOfReconns := peer.numOfManualReconns
+
+		if numOfReconns > totalCombinations {
+			numOfReconns = numOfReconns - numOfTurns * (numOfReconns / numOfTurns)
+		}
+
+		// Every manual reconnection attempt should give a different pair
+		// So players can find a better connection if some TURNs are lagging
+		// It tries pairs with same TURNs first, then mix them. 2 servers example:
+		// 1. Cloud<->Cloud 2. Xirsys<->Xirsys 3. Cloud<->Xirsys 4. Xirsys<->Cloud
+		if numOfReconns <= numOfTurns {
+			peer.peerSpecificTurn = append(peer.peerSpecificTurn, p.turnServer[numOfReconns - 1])
+			applog.Info("Reconnecting with specific TURNs. Leader: " + strconv.Itoa(numOfReconns) +
+							" secondary: " + strconv.Itoa(numOfReconns) + " Peer: " + peerAsString)
+		} else {
+			leaderServerNum := 
+				int(math.Ceil(float64((numOfReconns - numOfTurns)) / float64((totalCombinations - numOfTurns)/numOfTurns)))
+			secondaryServerNum := (numOfReconns - numOfTurns) / leaderServerNum
+
+			for i := 1; i <= numOfTurns; i++ {
+				if i == leaderServerNum {
+					secondaryServerNum += 1
+					break
+				} else if i == secondaryServerNum {
+					break
+				}
+			}
+
+			if isLeader {
+				peer.peerSpecificTurn = append(peer.peerSpecificTurn, p.turnServer[leaderServerNum - 1])
+			} else {
+				peer.peerSpecificTurn = append(peer.peerSpecificTurn, p.turnServer[secondaryServerNum - 1])
+			}
+
+			applog.Info("Reconnecting with specific TURNs. Leader:" + strconv.Itoa(leaderServerNum) +
+							" secondary: " + strconv.Itoa(secondaryServerNum) + " Peer: " + peerAsString)
+	}
+	p.peersMu.Unlock()
+
+	err := p.icebreakerClient.SendEvent(manualReconnectionMessage)
+
+	if err != nil {
+		applog.Info("Failed to send manualReconnectionMessage to peer " + peerAsString, zap.Error(err))
+	}
 
 	p.handleReconnection(playerId, true, false)
+	}
 }
