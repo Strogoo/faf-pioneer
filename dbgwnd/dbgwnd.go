@@ -3,8 +3,9 @@ package dbgwnd
 import (
 	"faf-pioneer/applog"
 	"faf-pioneer/adapter"
+	"faf-pioneer/webrtc"
 	"strings"
-	"github.com/pion/webrtc/v4"
+	pionwebrtc "github.com/pion/webrtc/v4"
 	"strconv"
 	"github.com/goforj/godump"
 	"os"
@@ -21,8 +22,9 @@ var formattedLogs		[]string
 var rawLogs             []string
 var sortedIds           []string
 var turnServersURLs     []string
-var allPeersStats       map[string]webrtc.StatsReport
+var allPeersStats       map[string]pionwebrtc.StatsReport
 var connectionStates    map[string]string
+var peers  				map[uint]*webrtc.Peer
 
 var logFilePath = ""
 var formattedLogsCount = 0
@@ -81,8 +83,8 @@ func CreateMainWindow(){
 	connTreeView.Column(1, Anchor("center"), Width(120))
 	connTreeView.Column(2, Anchor("center"), Width(120))
 	connTreeView.Column(3, Anchor("center"), Width(120))
-	connTreeView.Column(4, Anchor("center"), Width(120))
-	connTreeView.Column(5, Anchor("center"), Width(120))
+	connTreeView.Column(4, Anchor("center"), Width(180))
+	connTreeView.Column(5, Anchor("center"), Width(180))
 
 	connTreeView.Heading("#0", Txt("      ID"), Anchor("center"))
 	connTreeView.Heading(1, Txt(" "), Anchor("center"))
@@ -149,11 +151,13 @@ func CreateMainWindow(){
 	GridRowConfigure(myApp, 0, Weight(0))
 	GridRowConfigure(myApp, 1, Weight(0))
 	GridRowConfigure(myApp, 2, Weight(10))
-	Grid(turnListLabel, Row(0), Column(0), Sticky("NW"))
-	Grid(selectedTurnLabel, Row(0), Column(0), Sticky("NW"), Pady("0m 0m"), Padx("80m 0m"))
-	Grid(selectedTurnURL, Row(0), Column(0), Sticky("NW"), Pady("8m 0m"), Padx("80m 0m"))
-	Grid(turnServersList, Row(0), Column(0), Sticky("SW"), Pady("1m"), Ipadx("1m"), Ipady("1m"),Pady("9m 0m"))
-	Grid(turnListScroll, Row(0), Column(0), Sticky("NSW"), Pady("1m"), Ipadx("1m"), Ipady("1m"),Padx("70m 0m"), Pady("9m 0m"))
+
+	//Grid(turnListLabel, Row(0), Column(0), Sticky("NW"))
+	//Grid(selectedTurnLabel, Row(0), Column(0), Sticky("NW"), Pady("0m 0m"), Padx("80m 0m"))
+	//Grid(selectedTurnURL, Row(0), Column(0), Sticky("NW"), Pady("8m 0m"), Padx("80m 0m"))
+	//Grid(turnServersList, Row(0), Column(0), Sticky("SW"), Pady("1m"), Ipadx("1m"), Ipady("1m"),Pady("9m 0m"))
+	//Grid(turnListScroll, Row(0), Column(0), Sticky("NSW"), Pady("1m"), Ipadx("1m"), Ipady("1m"),Padx("70m 0m"), Pady("9m 0m"))
+	
 	Grid(connTreeView, Row(1),  Column(0), Sticky("NW"), Pady("1m"), Ipadx("1m"), Ipady("1m"))
 	Grid(notebook, Row(2), Column(0), Columnspan(2), Sticky("NSWE"))
 	GridRowConfigure(myApp, 0, Weight(1))
@@ -191,7 +195,7 @@ func reconnectBtnClicked(buttonID int){
 		pm := adapter.GetPeerManager()
 		if pm != nil {
 			playerID, _ := strconv.Atoi(sortedIds[buttonID])
-			pm.HandleReconnection(uint(playerID), true, selectedTurnServer)
+			pm.HandleReconnectRequestFromUI(uint(playerID))
 		}
 	}
 }
@@ -204,7 +208,6 @@ func turnServerSelected(){
 		if len(selectedURL) > 0 {
 			selectedTurnServer = selectedURL[0]
 			selectedTurnURL.Configure(Txt(selectedTurnServer))
-			connInfoView.Insert(END,  godump.DumpJSONStr(selectedTurnServer) +" ", "", "\n")
 		}
 	}
 }
@@ -418,11 +421,11 @@ func refreshConnStats(){
 			refreshConnInfoListIds()
 		}
 
-		if len(turnServersURLs) == 0 {
-			turnServersURLs = adapter.GetTurnServersURLs()
-		} else if !turnServersInserted {
-			refreshTurnServers()
-		}
+		// if len(turnServersURLs) == 0 {
+		// 	turnServersURLs = adapter.GetTurnServersURLs()
+		// } else if !turnServersInserted {
+		// 	refreshTurnServers()
+		// }
 	}
 
 	if len(allPeersStats) > 0 {
@@ -462,10 +465,16 @@ func refreshConnStats(){
 									case "local-candidate":
 										if candidateType,ok := result["candidateType"].(string); ok {
 											localCandidates[idVal] = candidateType
+											if candidateIp,ok := result["ip"].(string); ok {
+												localCandidates[idVal] += " "+ candidateIp
+											}
 										}
 									case "remote-candidate":
 										if candidateType,ok := result["candidateType"].(string); ok {
 											remoteCandidates[idVal] = candidateType
+											if candidateIp,ok := result["ip"].(string); ok {
+												remoteCandidates[idVal] += " "+ candidateIp
+											}
 										}
 									case "candidate-pair":
 										if nominated,ok := result["nominated"].(bool); ok {

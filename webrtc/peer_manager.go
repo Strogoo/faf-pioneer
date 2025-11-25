@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 	"fmt"
+	"strconv"
 )
 
 type onPeerCandidatesGatheredCallback = func(*webrtc.SessionDescription, []webrtc.ICECandidate)
@@ -55,7 +56,6 @@ type PeerManager struct {
 	forceTurnRelay       bool
 	reconnectionRequests chan uint
 	gpgNetToGameChannel  chan<- gpgnet.Message
-	specificTurnServers  map[string]webrtc.ICEServer
 	defaultTurnServer    []webrtc.ICEServer
 }
 
@@ -68,7 +68,6 @@ func NewPeerManager(
 	turnServer []webrtc.ICEServer,
 	icebreakerEvents <-chan icebreaker.EventMessage,
 	gpgNetToGameChannel chan<- gpgnet.Message,
-	specificTurnServers map[string]webrtc.ICEServer,
 ) *PeerManager {
 	peerManager := PeerManager{
 		ctx:                  ctx,
@@ -79,10 +78,9 @@ func NewPeerManager(
 		icebreakerEvents:     icebreakerEvents,
 		turnServer:           turnServer,
 		gameUdpPort:          gameUdpPort,
-		forceTurnRelay:       launcherInfo.ForceTurnRelay || sessionInfo.ForceRelay,
+		forceTurnRelay:       true,
 		reconnectionRequests: make(chan uint, maxLobbyPeers),
 		gpgNetToGameChannel:  gpgNetToGameChannel,
-		specificTurnServers:  specificTurnServers,
 		defaultTurnServer:    turnServer,
 	}
 
@@ -123,14 +121,14 @@ func (p *PeerManager) runReconnectionManagement() {
 	for {
 		select {
 		case peerId := <-p.reconnectionRequests:
-			p.HandleReconnection(peerId, false, "")
+			p.handleReconnection(peerId, false, false)
 		case <-p.ctx.Done():
 			return
 		}
 	}
 }
 
-func (p *PeerManager) HandleReconnection(playerId uint, calledFromUI bool, turnURL string) {
+func (p *PeerManager) handleReconnection(playerId uint, calledFromUI bool, forceReconnect bool) {
 	applog.Debug("Handling reconnection for peer", zap.Uint("playerId", playerId))
 
 	p.peersMu.Lock()
@@ -141,33 +139,19 @@ func (p *PeerManager) HandleReconnection(playerId uint, calledFromUI bool, turnU
 	}
 	p.peersMu.Unlock()
 
-	if calledFromUI {
-		switch turnURL {
-			case "Auto (force relay ON)":
-				peer.forceTurnRelay = true
-				p.turnServer = p.defaultTurnServer
-				applog.Info("---Reconnecting with Auto (force relay ON)", zap.Uint("peer", playerId))		
-			case "Auto (force relay OFF)":
-				peer.forceTurnRelay = false
-				p.turnServer = p.defaultTurnServer
-				applog.Info("---Reconnecting with Auto (force relay OFF)", zap.Uint("peer", playerId))
-			default:
-				peer.forceTurnRelay = true
-				if serv, ok := p.specificTurnServers[turnURL]; ok {
-					p.turnServer = []webrtc.ICEServer{serv}
-					applog.Info("---Reconnecting with specific TURN: "+turnURL, zap.Uint("peer", playerId))
-				} else {
-					p.turnServer = p.defaultTurnServer
-				}
-		}
-	} else {
-		if peer.IsActive() || (peer.connection != nil &&
-			peer.connection.ConnectionState() == webrtc.PeerConnectionStateConnecting) {
-			applog.Info("Peer already active/connecting, skipping reconnection", zap.Uint("peer", playerId))
-			return
+	if !forceReconnect {
+		if calledFromUI {
+			peer.forceTurnRelay = true
+			p.turnServer = p.defaultTurnServer
+		} else {
+			if peer.IsActive() || (peer.connection != nil &&
+				peer.connection.ConnectionState() == webrtc.PeerConnectionStateConnecting) {
+				applog.Info("Peer already active/connecting, skipping reconnection", zap.Uint("peer", playerId))
+				return
+			}
 		}
 	}
-
+	
 	applog.Info("Connecting to peer", zap.Uint("playerId", playerId))
 
 	if err := peer.ConnectOnce(p.turnServer); err != nil {
@@ -316,13 +300,25 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 	if peer, ok := p.peers[playerId]; ok {
 		p.peersMu.Unlock()
 		if !peer.IsActive() && !peer.IsDisabled() {
-			applog.Info("Peer exists but is inactive, scheduling reconnection",
-				zap.Uint("playerId", playerId),
-			)
-			p.scheduleReconnection(playerId)
+			tSincePeerCreation := time.Now().Unix() - peer.creationTimeSeconds
+
+			// Don't initiate reconnection on start (first 2 min)
+			// as it breaks a normal attempt that will succeed in a few seconds
+			// There is an additional connection watcher that works first 2 min (also a workaround)
+			// Will need need proper fix later
+			if tSincePeerCreation > 120 {
+				applog.Info("Peer exists but is inactive, scheduling reconnection",
+					zap.Uint("playerId", playerId),
+				)
+				p.scheduleReconnection(playerId)
+			} else {
+				applog.Info("Skipping reconnection since peer "+ strconv.FormatUint(uint64(playerId), 10) + 
+				" was created " + strconv.FormatInt(tSincePeerCreation, 10) + " seconds ago.")
+			}	
+		} else if peer.IsActive() {
+			applog.Info("Peer already exists and is active", zap.Uint("playerId", playerId))
 		}
 
-		applog.Info("Peer already exists and is active", zap.Uint("playerId", playerId))
 		return peer
 	}
 
@@ -360,6 +356,11 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 	}()
 
 	applog.Debug("Peer successfully created", zap.Uint("playerId", playerId))
+	
+	go func() {
+		p.initialConnectionWatcher(playerId)
+	}()
+
 	return newPeer
 }
 
@@ -398,10 +399,10 @@ func (p *PeerManager) onPeerStateChanged(peer *Peer, state webrtc.PeerConnection
 		applog.FromContext(peer.ctx).Info(
 			"Peer connection failed or closed, scheduling immediate reconnection")
 
-		if state == webrtc.PeerConnectionStateFailed && peer.forceTurnRelay {
-			applog.FromContext(peer.ctx).Info("Switching to fallback relay All policy")
-			peer.forceTurnRelay = false
-		}
+		// if state == webrtc.PeerConnectionStateFailed && peer.forceTurnRelay {
+		// 	applog.FromContext(peer.ctx).Info("Switching to fallback relay All policy")
+		// 	peer.forceTurnRelay = false
+		// }
 
 		//peer.reconnectMu.Lock()
 		//peer.reconnectionScheduled = false
@@ -553,4 +554,90 @@ func (p *PeerManager) HandleGameEnded() {
 	for _, peer := range p.peers {
 		peer.Disable()
 	}
+}
+
+var watchers 	= make(map[uint]bool)
+var watcherMutex  sync.Mutex
+
+// There is a bug when we can't connect to a peer
+// and connection process is getting stuck at "Peer exists but is inactive, scheduling reconnection"
+// only happens at start, so no need to keep this thread alive for more than 2 min or so
+// Note that this is a workaround and will require a proper fix in the future
+//
+// *Add. The bug described above is kinda fixed with one more workaround
+// See: "Peer exists but is inactive". But some watcher is still needed so we run this at start for 2 min
+func (p *PeerManager) initialConnectionWatcher(playerId uint) {
+	watcherMutex.Lock()
+	if watchers[playerId] {
+		applog.Debug("Watcher already exists", zap.Uint("playerId", playerId))
+		watcherMutex.Unlock()
+		return
+	} else {
+		applog.Debug("Creating connection watcher for peer", zap.Uint("playerId", playerId))
+		watchers[playerId] = true
+		watcherMutex.Unlock()
+	}
+
+	peerConnnectedSecondsTotal := 0
+	keepAliveSec := 120
+	reconnectDelaySec := 20
+	reconnectAttempts := 0
+	isLeader := false
+
+	if p.localUserId < playerId {
+		isLeader = true
+	}
+
+	for i := 0; i < keepAliveSec; i++ {
+		time.Sleep(time.Second)
+		
+		if peer, ok := p.peers[playerId]; ok {
+			if peer.connection.ConnectionState().String() == "connected"{
+				peerConnnectedSecondsTotal += 1
+			}
+		}
+
+		reconnectDelaySec -= 1
+		if reconnectDelaySec == 0 {
+			reconnectDelaySec = 20
+			reconnectAttempts += 1
+
+			// Sometimes connection go to "connected" state for a second
+			// and then fails and get stuck. So if total time in "connected" state
+			// is less than 2 seconds then we try to reconnect
+			if peerConnnectedSecondsTotal < 2 {
+				// odd tries - leader trying to reconnect
+				// even - secondary peer
+				if reconnectAttempts%2 == 0 {
+					if !isLeader {
+						applog.Info("Connection watcher: Initiating reconnection to peer", zap.Uint("playerId", playerId))
+						p.handleReconnection(playerId, false, true)
+					} else {
+						applog.Info("Connection watcher: Skipping reconnection", zap.Uint("playerId", playerId))
+					}
+				} else {
+					if isLeader{
+						applog.Info("Connection watcher: Initiating reconnection to peer", zap.Uint("playerId", playerId))
+						p.handleReconnection(playerId, false, true)
+					} else {
+						applog.Info("Connection watcher: Skipping reconnection", zap.Uint("playerId", playerId))
+					}
+				}
+				
+			}
+		}
+	}
+	applog.Debug("Stopping connection watcher for peer", zap.Uint("playerId", playerId))
+	watcherMutex.Lock()
+	watchers[playerId] = false
+	watcherMutex.Unlock()
+}
+
+
+
+func (p *PeerManager) HandleReconnectRequestFromUI(playerId uint) {
+	applog.Info("Starting manual reconnection for peer", zap.Uint("playerId", playerId))
+
+
+	p.handleReconnection(playerId, true, false)
 }

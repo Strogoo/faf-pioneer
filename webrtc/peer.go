@@ -46,6 +46,7 @@ type Peer struct {
 	localAddrReady        chan struct{}
 	localAddrReadyOnce    sync.Once
 	remoteAddress         *net.IPAddr
+	creationTimeSeconds   int64
 }
 
 func (p *Peer) IsOfferer() bool {
@@ -133,6 +134,7 @@ func CreatePeer(
 		gameDataProxy:        gameUdpProxy,
 		webrtcApi:            webrtcApi,
 		forceTurnRelay:       peerManager.forceTurnRelay,
+		creationTimeSeconds:  time.Now().Unix(),
 	}
 
 	return &peer, nil
