@@ -61,6 +61,7 @@ type PeerManager struct {
 	forceTurnRelay       bool
 	reconnectionRequests chan uint
 	gpgNetToGameChannel  chan<- gpgnet.Message
+	disableRecBtnPeers   []string
 }
 
 func NewPeerManager(
@@ -317,13 +318,15 @@ func (p *PeerManager) GetPeerById(playerId uint) (*Peer, bool) {
 	return peer, ok
 }
 
-func (p *PeerManager) GetAllPeersStats() (map[string]webrtc.StatsReport, map[string]string, map[string][]int) {
+func (p *PeerManager) GetAllPeersStats() (map[string]webrtc.StatsReport, map[string]string, map[string][]int, []string) {
 	p.peersMu.Lock()
 	defer p.peersMu.Unlock()
 
 	allPeersStats := make(map[string]webrtc.StatsReport)
 	connectionStates := make(map[string]string)
 	turnIds := make(map[string][]int)
+	idsToDisable := p.disableRecBtnPeers
+	p.disableRecBtnPeers = nil
 
 	for id,p := range(p.peers) {
 		idAsString := fmt.Sprintf("%d", id)
@@ -332,7 +335,7 @@ func (p *PeerManager) GetAllPeersStats() (map[string]webrtc.StatsReport, map[str
 		turnIds[idAsString] = []int{p.specTurnIdLocal, p.specTurnIdRemote}
 	}
 
-	return allPeersStats, connectionStates, turnIds
+	return allPeersStats, connectionStates, turnIds, idsToDisable
 }
 
 func (p *PeerManager) GetAllPeerIds() []uint {
@@ -725,6 +728,7 @@ func (p *PeerManager) HandleManualReconnectRequest(playerId uint) {
 	if ok {
 		if !peer.manualReconnIsActive && !peer.remoteManualRRequest {
 			peer.manualReconnIsActive = true
+			p.disableRecBtnPeers = append(p.disableRecBtnPeers, peerAsString)
 			p.peersMu.Unlock()
 			p.preparePeerForManualReconn(playerId)
 
@@ -766,6 +770,7 @@ func (p *PeerManager) handleRemoteManualReconnRequest(playerId uint) {
 	if ok {
 		if !peer.manualReconnIsActive {
 			peer.remoteManualRRequest = true
+			p.disableRecBtnPeers = append(p.disableRecBtnPeers, fmt.Sprintf("%d", playerId))
 			p.peersMu.Unlock()
 
 			// No need to initiate reconn process when remote request is recieved

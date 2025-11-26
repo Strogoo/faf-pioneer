@@ -17,6 +17,11 @@ import (
 	_ "modernc.org/tk9.0/themes/azure"
 )
 
+const (
+	disableRecButnOnNewConnect = 45 //seconds
+	disableRecButnOnManualRec  = 15 //seconds
+)
+
 var pm                  *webrtc.PeerManager
 
 var logStrings 			[]string
@@ -29,12 +34,15 @@ var connectionStates    map[string]string
 var turnIds             map[string][]int
 var peers               map[uint]*webrtc.Peer
 var turnsNameById       map[int]string
+var idsToDisable        []string
+var disabledBtnsTimers  = make(map[string]int)
+var oldPeer             = make(map[string]bool)
 
 var logFilePath = ""
 var formattedLogsCount = 0
 var rawLogCount = 0
 var logViewLinesCount = 0
-var currentNumOfIds = 0
+var numOfIdsInConnInfoTab = 0
 var reconnectButtonsEnabled = 0
 var treeViewNumOfLines = 0
 var showRawLogs = false
@@ -89,7 +97,7 @@ func CreateMainWindow(){
 
 	connTreeView.Column("#0", Anchor("center"), Width(120))
 	connTreeView.Column(1, Anchor("center"), Width(120))
-	connTreeView.Column(2, Anchor("center"), Width(120))
+	connTreeView.Column(2, Anchor("center"), Width(100))
 	connTreeView.Column(3, Anchor("center"), Width(40))
 	connTreeView.Column(4, Anchor("center"), Width(120))
 	connTreeView.Column(5, Anchor("center"), Width(120))
@@ -99,7 +107,7 @@ func CreateMainWindow(){
 	connTreeView.Heading("#0", Txt("      ID"), Anchor("center"))
 	connTreeView.Heading(1, Txt("Name"), Anchor("center"))
 	connTreeView.Heading(2, Txt(" "), Anchor("center"))
-	connTreeView.Heading(3, Txt("-"), Anchor("center"))
+	connTreeView.Heading(3, Txt(" "), Anchor("center"))
 	connTreeView.Heading(4, Txt("Connection state"), Anchor("center"))
 	connTreeView.Heading(5, Txt("RTT(ping)"), Anchor("center"))
 	connTreeView.Heading(6, Txt("Local"), Anchor("center"))
@@ -274,10 +282,10 @@ func refreshTurnServers() {
 }
 
 func refreshConnInfoListIds() {
-	if currentNumOfIds != 0 {
-		connIdListBox.Delete("0", strconv.Itoa(currentNumOfIds - 1))
+	if numOfIdsInConnInfoTab != 0 {
+		connIdListBox.Delete("0", strconv.Itoa(numOfIdsInConnInfoTab - 1))
 	}
-	currentNumOfIds = len(sortedIds)
+	numOfIdsInConnInfoTab = len(sortedIds)
 
 	for i := len(sortedIds) - 1; i >= 0; i-- {
 		connIdListBox.Insert(0, sortedIds[i])
@@ -425,7 +433,7 @@ func refreshConnStats(){
 	}
 	
 	if pm != nil {
-		allPeersStats, connectionStates, turnIds = pm.GetAllPeersStats()
+		allPeersStats, connectionStates, turnIds, idsToDisable = pm.GetAllPeersStats()
 
 		//sort all ids so the they always displayed in the right order
 		sortedIds = nil
@@ -443,9 +451,11 @@ func refreshConnStats(){
 			}
 		}
 
-		if len(allPeersStats) != currentNumOfIds {
+		if len(allPeersStats) != numOfIdsInConnInfoTab {
 			refreshConnInfoListIds()
 		}
+
+		refreshButtons()
 
 		if !relaysUpdated {
 			relaysUpdated = true
@@ -464,9 +474,13 @@ func refreshConnStats(){
 		for treeViewNumOfLines > 0 {
 			connTreeView.Delete(strconv.Itoa(treeViewNumOfLines))
 			treeViewNumOfLines -= 1
-		}		
+		}
+		
 		
 		for _, id := range(sortedIds) {
+			if _, ok := oldPeer[id]; !ok {
+				oldPeer[id] = true
+			}
 			if stats, ok := allPeersStats[id]; ok {
 				localCandidates := make(map[string]string)
 				remoteCandidates := make(map[string]string)
@@ -546,26 +560,66 @@ func refreshConnStats(){
 				if remoteCandiType, ok := remoteCandidates[activeRemoteCandidateId]; ok {
 					activeRemoteCandiType = remoteCandiType + " " + remoteTurnName
 				}
+				
+				timer := ""
+				if _, ok := disabledBtnsTimers[id]; ok {
+					timer = strconv.Itoa(disabledBtnsTimers[id])+"s"
+				}
 
 				treeViewNumOfLines += 1
 
 				//https://gitlab.com/cznic/tk9.0/-/blob/master/themes/azure/_examples/example.go#L205
 				tvData := []any{"", treeViewNumOfLines, id,
-					"{name}"+" "+"{}"+" "+"{-}"+" "+"{"+connectionState+"}"+" "+"{"+ping+"}"+" "+"{"+activeLocalCandiType+"}"+" "+"{"+activeRemoteCandiType+"}"}
+					"{name}"+" "+"{}"+" "+"{"+timer+"}"+" "+"{"+connectionState+"}"+" "+"{"+ping+"}"+" "+"{"+activeLocalCandiType+"}"+" "+"{"+activeRemoteCandiType+"}"}
 
 				connTreeView.Insert(tvData[0], "end", Id(tvData[1]), Txt(tvData[2]), Value(tvData[3]))
 			}
 		}
 	}
+}
 
+func refreshButtons() {
 	numOfIds := len(sortedIds)
+
 	if reconnectButtonsEnabled != numOfIds {
 		for i,b := range(reconnectButtons){
+			reconnectButtonsEnabled += 1
 			if i < numOfIds {
 				b.Configure((State("normal")))
 			} else {
 				b.Configure((State("disabled")))
 			}
+		}
+	}
+
+	if len(oldPeer) < len(sortedIds) {
+		for i,_ := range(sortedIds) {
+			if _, ok := oldPeer[sortedIds[i]]; !ok {
+				disabledBtnsTimers[sortedIds[i]] = disableRecButnOnNewConnect
+			}
+		}
+	}
+
+	if len(idsToDisable) > 0 || len(disabledBtnsTimers) > 0 {
+		for i,_ := range(disabledBtnsTimers) {
+			if disabledBtnsTimers[i] > 0 {
+				disabledBtnsTimers[i] -= 1
+			} else {
+				delete(disabledBtnsTimers, i)
+			}
+		}
+
+		for i,_ := range(sortedIds) {
+			if slices.Contains(idsToDisable, sortedIds[i]){
+				disabledBtnsTimers[sortedIds[i]] = disableRecButnOnManualRec
+			}
+
+			if _, ok := disabledBtnsTimers[sortedIds[i]]; ok {
+				reconnectButtons[i].Configure((State("disabled")))
+			} else {
+				reconnectButtons[i].Configure((State("normal")))
+			}
+			idsToDisable = nil
 		}
 	}
 }
