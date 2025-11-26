@@ -71,6 +71,8 @@ func (a *Adapter) Start() error {
 			case <-a.ctx.Done():
 				return
 			case <-time.After(backoff):
+				// Better don't increase delay and just use fixed 1 sec value
+				// Might be critical in some situations when you want to restore conn as fast as possible
 				if backoff < 0*time.Second {
 					backoff *= 2
 				}

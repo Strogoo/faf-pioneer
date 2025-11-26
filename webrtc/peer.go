@@ -49,7 +49,10 @@ type Peer struct {
 	creationTimeSeconds   int64
 	numOfManualReconns    int
 	manualReconnIsActive  bool
+	remoteManualRRequest  bool
 	peerSpecificTurn      []webrtc.ICEServer
+	specTurnIdLocal       int
+	specTurnIdRemote      int
 }
 
 func (p *Peer) IsOfferer() bool {
@@ -139,7 +142,10 @@ func CreatePeer(
 		forceTurnRelay:       peerManager.forceTurnRelay,
 		creationTimeSeconds:  time.Now().Unix(),
 		numOfManualReconns:   0,
-		manualReconnIsActive: false, 
+		manualReconnIsActive: false,
+		remoteManualRRequest: false,
+		specTurnIdLocal:      0,
+		specTurnIdRemote:     0, 
 	}
 
 	return &peer, nil
@@ -392,7 +398,7 @@ func (p *Peer) RegisterDataChannel() {
 
 					err := p.gameDataChannel.Send(msg)
 					if err != nil {
-						applog.FromContext(p.ctx).Error(
+						applog.FromContext(p.ctx).Debug(
 							"Could not send data to WebRTC data channel",
 							zap.Error(err),
 						)
