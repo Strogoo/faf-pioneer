@@ -771,6 +771,8 @@ func (p *PeerManager) handleRemoteManualReconnRequest(playerId uint) {
 			// No need to initiate reconn process when remote request is recieved
 			// We prepare specific turn and then wait for reconn from other side
 			p.preparePeerForManualReconn(playerId)	
+		} else {
+			p.peersMu.Unlock()
 		}
 	} else {
 		p.peersMu.Unlock()
