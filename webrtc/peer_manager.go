@@ -739,6 +739,7 @@ func (p *PeerManager) HandleManualReconnectRequest(playerId uint) {
 		}
 	} else {
 		applog.Error("Can't initiate manual reconnection: No such peer " + peerAsString)
+		p.peersMu.Unlock()
 	}
 	
 }
@@ -762,7 +763,6 @@ func (p *PeerManager) scheduleManualReconnection(playerId uint) {
 func (p *PeerManager) handleRemoteManualReconnRequest(playerId uint) {
 	p.peersMu.Lock()
 	peer, ok := p.peers[playerId]
-
 	if ok {
 		if !peer.manualReconnIsActive {
 			peer.remoteManualRRequest = true
@@ -772,6 +772,8 @@ func (p *PeerManager) handleRemoteManualReconnRequest(playerId uint) {
 			// We prepare specific turn and then wait for reconn from other side
 			p.preparePeerForManualReconn(playerId)	
 		}
+	} else {
+		p.peersMu.Unlock()
 	}
 }
 
