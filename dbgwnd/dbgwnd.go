@@ -17,6 +17,8 @@ import (
 	_ "modernc.org/tk9.0/themes/azure"
 )
 
+var pm                  *webrtc.PeerManager
+
 var logStrings 			[]string
 var formattedLogs		[]string
 var rawLogs             []string
@@ -418,7 +420,10 @@ func formatLogLines() {
 }
 
 func refreshConnStats(){
-	pm := adapter.GetPeerManager()
+	if pm == nil {
+		pm = adapter.GetPeerManager()
+	}
+	
 	if pm != nil {
 		allPeersStats, connectionStates, turnIds = pm.GetAllPeersStats()
 
