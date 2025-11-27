@@ -83,7 +83,7 @@ func NewPeerManager(
 		icebreakerEvents:     icebreakerEvents,
 		turnServer:           turnServer,
 		gameUdpPort:          gameUdpPort,
-		forceTurnRelay:       true,
+		forceTurnRelay:       launcherInfo.ForceTurnRelay || sessionInfo.ForceRelay,
 		reconnectionRequests: make(chan uint, maxLobbyPeers),
 		gpgNetToGameChannel:  gpgNetToGameChannel,
 	}
@@ -346,8 +346,8 @@ func (p *PeerManager) GetAllPeerIds() []uint {
 	return ids
 }
 
-func (p *PeerManager) GetTurnURLs() ([]string, map[int]string) {
-	return allTurnServersUrls, turnsNameById
+func (p *PeerManager) GetTurnURLs() ([]string, map[int]string, bool) {
+	return allTurnServersUrls, turnsNameById, p.forceTurnRelay
 }
 
 func (p *PeerManager) removePeer(playerId uint) {
@@ -720,6 +720,30 @@ func (p *PeerManager) initialConnectionWatcher(playerId uint) {
 	watcherMutex.Unlock()
 }
 
+// Forcing "no relay" conn from UI. 
+// A fallback scenario if TURNs lags too much and players can't get good pair
+// No need to send any message to peer and wait
+// Add: Doesn't work.
+func (p *PeerManager) HandleManualNoRelayReconnRequest(playerId uint) {
+	peerAsString := fmt.Sprintf("%d", playerId)
+	p.peersMu.Lock()
+	peer, ok := p.peers[playerId]
+	if ok {
+		if !peer.manualReconnIsActive && !peer.remoteManualRRequest {
+			peer.forceTurnRelay = false
+			p.peersMu.Unlock()
+
+			p.handleReconnection(playerId, true)
+		} else {
+			p.peersMu.Unlock()
+			applog.Debug("Manual reconnection is already in process. Skipping local request. Peer: " + peerAsString)
+		}
+	} else {
+		applog.Error("Can't initiate manual reconnection: No such peer " + peerAsString)
+		p.peersMu.Unlock()
+	}
+	
+}
 
 func (p *PeerManager) HandleManualReconnectRequest(playerId uint) {
 	peerAsString := fmt.Sprintf("%d", playerId)

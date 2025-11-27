@@ -28,11 +28,9 @@ var logStrings 			[]string
 var formattedLogs		[]string
 var rawLogs             []string
 var sortedIds           []string
-var turnServersURLs     []string
 var allPeersStats       map[string]pionwebrtc.StatsReport
 var connectionStates    map[string]string
 var turnIds             map[string][]int
-var peers               map[uint]*webrtc.Peer
 var turnsNameById       map[int]string
 var idsToDisable        []string
 var disabledBtnsTimers  = make(map[string]int)
@@ -49,16 +47,10 @@ var treeViewNumOfLines = 0
 var showRawLogs = false
 var hideDebug = false
 var clearLogWindow = false
-var turnServersInserted = false
-var selectedTurnServer = ""
 var relaysUpdated = false
 
 var myApp  = App
-var turnListLabel       *LabelWidget
-var turnListScroll      *TScrollbarWidget
-var selectedTurnLabel   *LabelWidget
-var selectedTurnURL     *LabelWidget
-var turnServersList     *ListboxWidget
+var forceRelayLabel     *LabelWidget
 var connTreeView        *TTreeviewWidget
 var notebook            *TNotebookWidget
 var logFrame            *TFrameWidget
@@ -75,6 +67,7 @@ var connInfoView        *TextWidget
 var connInfoScroll      *TScrollbarWidget
 var connIdListBox       *ListboxWidget
 var reconnectButtons    []*ButtonWidget
+var reconnectNoRelayBtn []*ButtonWidget
 
 var rawLogsChButtonVar  bool
 var hideDebugButtonVar  bool
@@ -83,16 +76,9 @@ var hideDebugButtonVar  bool
 func CreateMainWindow(){
 	myApp.WmTitle("FAF Pioneer")
 
-	turnListLabel = Label(Height(2), Anchor("w"), Txt("Available TURN servers:"), Font("Helvetica", 10))
-	selectedTurnLabel = Label(Height(2), Anchor("w"), Txt("Current TURN server:"), Font("Helvetica", 10))
-	selectedTurnURL = Label(Height(2), Anchor("w"), Txt("Auto (force relay ON)"), Font("Helvetica", 10, "bold"))
+	// Shows if "force relay" is ON or OFF
+	forceRelayLabel = Label(Height(2), Anchor("w"), Txt("Force relay:"), Font("Helvetica", 12))
 
-	// Available TURN servers list
-	turnServersList = Listbox(Width(45), Height(5), Yscrollcommand(
-		func(e *Event) { e.ScrollSet(turnListScroll) }))
-	Bind(turnServersList, "<<ListboxSelect>>", Command(turnServerSelected))
-	turnListScroll = TScrollbar(Command(func(e *Event) { e.Yview(turnServersList) }))
-	
 	// Connections treeview
 	connTreeView = TTreeview(Selectmode("browse"), Columns("1 2 3 4 5 6 7"), Height(13))
 
@@ -123,6 +109,16 @@ func CreateMainWindow(){
 		Grid(but, Row(1), Column(0), Sticky("NW"), Pady(fmt.Sprintf("%.1f", padyFloat)+"m 0m"),Padx("80m 0m"))
 		but.Configure(State("disabled"))
 	}
+
+	// Reconnect NO RELAY buttons
+	// for i := 0; i < 15; i++ {
+	// 	but := Button(Txt(" ! "), Font("Helvetica", 6, "bold"), Command(func() { reconnNoRelaytBtnClicked(i) }))
+    // 	reconnectNoRelayBtn = append(reconnectNoRelayBtn, but)
+
+	// 	padyFloat := 8 + float64(i)*4.5
+	// 	Grid(but, Row(1), Column(0), Sticky("NW"), Pady(fmt.Sprintf("%.1f", padyFloat)+"m 0m"),Padx("70m 0m"))
+	// 	but.Configure(State("disabled"))
+	// }
 
 	
 	// notebook contains different tabs (Logs, conn info etc.)
@@ -184,11 +180,7 @@ func CreateMainWindow(){
 	GridRowConfigure(myApp, 1, Weight(0))
 	GridRowConfigure(myApp, 2, Weight(10))
 
-	//Grid(turnListLabel, Row(0), Column(0), Sticky("NW"))
-	//Grid(selectedTurnLabel, Row(0), Column(0), Sticky("NW"), Pady("0m 0m"), Padx("80m 0m"))
-	//Grid(selectedTurnURL, Row(0), Column(0), Sticky("NW"), Pady("8m 0m"), Padx("80m 0m"))
-	//Grid(turnServersList, Row(0), Column(0), Sticky("SW"), Pady("1m"), Ipadx("1m"), Ipady("1m"),Pady("9m 0m"))
-	//Grid(turnListScroll, Row(0), Column(0), Sticky("NSW"), Pady("1m"), Ipadx("1m"), Ipady("1m"),Padx("70m 0m"), Pady("9m 0m"))
+	Grid(forceRelayLabel, Row(0), Column(0), Sticky("NW"), Pady("0m 0m"), Padx("0m 0m"))
 	
 	Grid(connTreeView, Row(1),  Column(0), Sticky("NW"), Pady("1m"), Ipadx("1m"), Ipady("1m"))
 	Grid(notebook, Row(2), Column(0), Columnspan(2), Sticky("NSWE"))
@@ -222,24 +214,30 @@ func hideDebugChkButtonPressed(){
 	}
 }
 
-func reconnectBtnClicked(buttonID int){
+func reconnNoRelaytBtnClicked(buttonID int){
 	if len(sortedIds) > buttonID{
-		pm := adapter.GetPeerManager()
 		if pm != nil {
-			playerID, _ := strconv.Atoi(sortedIds[buttonID])
-			pm.HandleManualReconnectRequest(uint(playerID))
+			name := ""
+			if n, ok := playerNames[sortedIds[buttonID]]; ok {
+					name = n
+			}
+			answer := MessageBox(Detail("Are you sure you want to try to connect directly? This will expose your real IP address to peer: " +
+				sortedIds[buttonID] + " " + name), Type("yesno"))
+			connInfoView.Insert(END,  answer +" ", "", "\n")
+
+			if answer == "yes"{
+				playerID, _ := strconv.Atoi(sortedIds[buttonID])
+				pm.HandleManualNoRelayReconnRequest(uint(playerID))
+			}
 		}
 	}
 }
 
-func turnServerSelected(){
-	selected := turnServersList.Curselection()
-
-	if len(selected) > 0 {
-		selectedURL := turnServersList.Get( strconv.Itoa(selected[0]))
-		if len(selectedURL) > 0 {
-			selectedTurnServer = selectedURL[0]
-			selectedTurnURL.Configure(Txt(selectedTurnServer))
+func reconnectBtnClicked(buttonID int){
+	if len(sortedIds) > buttonID{
+		if pm != nil {
+			playerID, _ := strconv.Atoi(sortedIds[buttonID])
+			pm.HandleManualReconnectRequest(uint(playerID))
 		}
 	}
 }
@@ -267,19 +265,6 @@ func refreshUI() {
 	refreshLogs()
 	refreshConnStats()
 	TclAfter(time.Second * 1, refreshUI)
-}
-
-func refreshTurnServers() {
-	turnServersInserted = true
-
-	turnServersList.Insert(0, "Auto (force relay OFF)")
-	turnServersList.Insert(0, "Auto (force relay ON)")
-
-	for _,server := range(turnServersURLs) {
-		if !strings.Contains(server, "stun") {
-			turnServersList.Insert(0, server)
-		}
-	}
 }
 
 func refreshConnInfoListIds() {
@@ -460,8 +445,14 @@ func refreshConnStats(){
 
 		if !relaysUpdated {
 			relaysUpdated = true
-			urls, turnNameById := pm.GetTurnURLs()
+			urls, turnNameById, forceRelay := pm.GetTurnURLs()
 			turnsNameById = turnNameById
+
+			if forceRelay {
+				forceRelayLabel.Configure(Txt("Force relay: ON"))
+			} else {
+				forceRelayLabel.Configure(Txt("Force relay: OFF"))
+			}
 
 			for _, st := range urls {
 				relayView.Insert(END, st+" ", "", "\n")
@@ -573,7 +564,7 @@ func refreshConnStats(){
 				} else {
 					playerNames = adapter.GetNicknames()
 				}
-				
+
 				treeViewNumOfLines += 1
 
 				//https://gitlab.com/cznic/tk9.0/-/blob/master/themes/azure/_examples/example.go#L205
@@ -590,6 +581,7 @@ func refreshButtons() {
 	numOfIds := len(sortedIds)
 
 	if reconnectButtonsEnabled != numOfIds {
+		// normal buttons
 		for i,b := range(reconnectButtons){
 			reconnectButtonsEnabled += 1
 			if i < numOfIds {
@@ -598,6 +590,15 @@ func refreshButtons() {
 				b.Configure((State("disabled")))
 			}
 		}
+
+		// no relay "!" buttons
+		// for i,b := range(reconnectNoRelayBtn){
+		// 	if i < numOfIds {
+		// 		b.Configure((State("normal")))
+		// 	} else {
+		// 		b.Configure((State("disabled")))
+		// 	}
+		// }
 	}
 
 	if len(oldPeer) < len(sortedIds) {
@@ -622,11 +623,20 @@ func refreshButtons() {
 				disabledBtnsTimers[sortedIds[i]] = disableRecButnOnManualRec
 			}
 
+			// normal buttons
 			if _, ok := disabledBtnsTimers[sortedIds[i]]; ok {
 				reconnectButtons[i].Configure((State("disabled")))
 			} else {
 				reconnectButtons[i].Configure((State("normal")))
 			}
+
+			// no relay "!" buttons
+			// if _, ok := disabledBtnsTimers[sortedIds[i]]; ok {
+			// 	reconnectNoRelayBtn[i].Configure((State("disabled")))
+			// } else {
+			// 	reconnectNoRelayBtn[i].Configure((State("normal")))
+			// }
+
 			idsToDisable = nil
 		}
 	}

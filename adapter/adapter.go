@@ -214,7 +214,10 @@ func GetPeerManager() *webrtc.PeerManager {
 
 func GetNicknames() map[string]string {
 	mu.Lock()
-	nnames := userNicknames
+	nnames  := make(map[string]string, len(userNicknames))
+	for k, v := range userNicknames {
+        nnames[k] = v
+    }
 	mu.Unlock()
 	return nnames
 }
