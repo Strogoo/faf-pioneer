@@ -14,9 +14,12 @@ import (
 	"go.uber.org/zap"
 	"strings"
 	"time"
+	"sync"
 )
 
-var PeerManager 		*webrtc.PeerManager
+var PeerManager     *webrtc.PeerManager
+var userNicknames   =make(map[string]string)
+var mu              sync.Mutex
 
 type Adapter struct {
 	gpgNetFromGame      chan gpgnet.Message
@@ -149,6 +152,30 @@ func (a *Adapter) Start() error {
 				if baseMsg, isBase := msg.(*gpgnet.BaseMessage); isBase {
 					parsedMsg, parseErr := baseMsg.TryParse()
 					if parseErr == nil {
+						// Save nicknames for UI	
+						cmd := parsedMsg.GetCommand()
+						if cmd == "JoinGame" || cmd == "ConnectToPeer"{
+							nickname := ""
+							playerId := ""
+							for i, item := range parsedMsg.GetArgs() {
+								switch v := item.(type) {
+								case int32:
+									if i == 2 {
+										playerId = fmt.Sprintf("%d", v)
+									}
+								case string:
+									if i == 1 {
+										nickname = v
+									}
+								}
+								if playerId != "" && nickname != "" {
+									mu.Lock()
+									userNicknames[playerId] = nickname
+									mu.Unlock()
+								}
+							}
+						}
+
 						processed := gpgNetServer.ProcessMessage(parsedMsg)
 						a.gpgNetToGame <- processed
 						continue
@@ -183,4 +210,11 @@ func (a *Adapter) Start() error {
 
 func GetPeerManager() *webrtc.PeerManager {
 	return PeerManager
+}
+
+func GetNicknames() map[string]string {
+	mu.Lock()
+	nnames := userNicknames
+	mu.Unlock()
+	return nnames
 }

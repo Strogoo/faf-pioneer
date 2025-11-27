@@ -37,6 +37,7 @@ var turnsNameById       map[int]string
 var idsToDisable        []string
 var disabledBtnsTimers  = make(map[string]int)
 var oldPeer             = make(map[string]bool)
+var playerNames         = make(map[string]string)
 
 var logFilePath = ""
 var formattedLogsCount = 0
@@ -566,11 +567,18 @@ func refreshConnStats(){
 					timer = strconv.Itoa(disabledBtnsTimers[id])+"s"
 				}
 
+				playerName := "-"
+				if name, ok := playerNames[id]; ok {
+					playerName = name
+				} else {
+					playerNames = adapter.GetNicknames()
+				}
+				
 				treeViewNumOfLines += 1
 
 				//https://gitlab.com/cznic/tk9.0/-/blob/master/themes/azure/_examples/example.go#L205
 				tvData := []any{"", treeViewNumOfLines, id,
-					"{name}"+" "+"{}"+" "+"{"+timer+"}"+" "+"{"+connectionState+"}"+" "+"{"+ping+"}"+" "+"{"+activeLocalCandiType+"}"+" "+"{"+activeRemoteCandiType+"}"}
+					"{"+playerName+"}"+" "+"{}"+" "+"{"+timer+"}"+" "+"{"+connectionState+"}"+" "+"{"+ping+"}"+" "+"{"+activeLocalCandiType+"}"+" "+"{"+activeRemoteCandiType+"}"}
 
 				connTreeView.Insert(tvData[0], "end", Id(tvData[1]), Txt(tvData[2]), Value(tvData[3]))
 			}

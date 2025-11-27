@@ -729,16 +729,18 @@ func (p *PeerManager) HandleManualReconnectRequest(playerId uint) {
 		if !peer.manualReconnIsActive && !peer.remoteManualRRequest {
 			peer.manualReconnIsActive = true
 			p.disableRecBtnPeers = append(p.disableRecBtnPeers, peerAsString)
-			p.peersMu.Unlock()
-			p.preparePeerForManualReconn(playerId)
-
+			
+			manualReconnectionMessage.BaseEvent.RecipientID = &playerId
 			err := p.icebreakerClient.SendEvent(manualReconnectionMessage)
-
 			if err != nil {
 				applog.Error("Failed to send manualReconnectionMessage to peer " + peerAsString, zap.Error(err))
 			}
+			p.peersMu.Unlock()
+
+			p.preparePeerForManualReconn(playerId)
 			go p.scheduleManualReconnection(playerId)
 		} else {
+			p.peersMu.Unlock()
 			applog.Debug("Manual reconnection is already in process. Skipping local request. Peer: " + peerAsString)
 		}
 	} else {
