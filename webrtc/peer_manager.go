@@ -464,6 +464,10 @@ func (p *PeerManager) onPeerStateChanged(peer *Peer, state webrtc.PeerConnection
 			applog.FromContext(peer.ctx).Info(
 				"Peer connection failed or closed, scheduling immediate reconnection")
 
+			// Do not uncomment this. Switching from relay to non relay doesn't work well and kinda bugged
+			// I left it here as notification, so if someone want to try something similar in the future
+			// he should do it carefully and with proper testing
+
 			// if state == webrtc.PeerConnectionStateFailed && peer.forceTurnRelay {
 			// 	applog.FromContext(peer.ctx).Info("Switching to fallback relay All policy")
 			// 	peer.forceTurnRelay = false
@@ -825,7 +829,7 @@ func (p *PeerManager) preparePeerForManualReconn(playerId uint) {
 		numOfReconns := peer.numOfManualReconns
 
 		if numOfReconns > totalCombinations {
-			numOfReconns = numOfReconns - totalCombinations * (numOfReconns / totalCombinations)
+			numOfReconns = ((numOfReconns - 1) % totalCombinations) + 1
 		}
 
 		// Every manual reconnection attempt should give a different pair
@@ -835,7 +839,8 @@ func (p *PeerManager) preparePeerForManualReconn(playerId uint) {
 		if numOfReconns <= numOfTurns {
 			peer.peerSpecificTurn = append(peer.peerSpecificTurn, p.turnServer[numOfReconns - 1])
 			applog.Info("Specific TURN prepared. Leader: " + strconv.Itoa(numOfReconns) +
-						" secondary: " + strconv.Itoa(numOfReconns) + " Peer: " + peerAsString)
+						" secondary: " + strconv.Itoa(numOfReconns) + " Peer: " + peerAsString + 
+						" Number of manual reconnects: "+ strconv.Itoa(peer.numOfManualReconns))
 			peer.specTurnIdLocal = numOfReconns
 			peer.specTurnIdRemote = numOfReconns
 		} else {
