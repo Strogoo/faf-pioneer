@@ -328,11 +328,15 @@ func (p *PeerManager) GetAllPeersStats() (map[string]webrtc.StatsReport, map[str
 	idsToDisable := p.disableRecBtnPeers
 	p.disableRecBtnPeers = nil
 
-	for id,p := range(p.peers) {
+	for id,peer := range(p.peers) {
+		if peer == nil || peer.connection == nil{
+			continue
+		}
+
 		idAsString := fmt.Sprintf("%d", id)
-		allPeersStats[idAsString] = p.connection.GetStats()
-		connectionStates[idAsString] = p.connection.ConnectionState().String()
-		turnIds[idAsString] = []int{p.specTurnIdLocal, p.specTurnIdRemote}
+		allPeersStats[idAsString] = peer.connection.GetStats()
+		connectionStates[idAsString] = peer.connection.ConnectionState().String()
+		turnIds[idAsString] = []int{peer.specTurnIdLocal, peer.specTurnIdRemote}
 	}
 
 	return allPeersStats, connectionStates, turnIds, idsToDisable
@@ -682,11 +686,13 @@ func (p *PeerManager) initialConnectionWatcher(playerId uint) {
 	for i := 0; i < keepAliveSec; i++ {
 		time.Sleep(time.Second)
 		
+		p.peersMu.Lock()
 		if peer, ok := p.peers[playerId]; ok {
 			if peer.connection.ConnectionState().String() == "connected"{
 				peerConnnectedSecondsTotal += 1
 			}
 		}
+		p.peersMu.Unlock()
 
 		reconnectDelaySec -= 1
 		if reconnectDelaySec == 0 {

@@ -538,11 +538,13 @@ func refreshConnStats(){
 				remoteTurnName := ""
 
 				if tIds, ok := turnIds[id]; ok {
-					if tIds[0] != 0 {
-						localTurnName = turnsNameById[tIds[0]]
-					}
-					if tIds[1] != 0 {
-						remoteTurnName = turnsNameById[tIds[1]]
+					if len(tIds) > 1 {
+						if tIds[0] != 0 {
+							localTurnName = turnsNameById[tIds[0]]
+						}
+						if tIds[1] != 0 {
+							remoteTurnName = turnsNameById[tIds[1]]
+						}
 					}
 				}
 				
