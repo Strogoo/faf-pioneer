@@ -86,6 +86,13 @@ func (a *Adapter) Start() error {
 
 	turnServer := make([]pionwebrtc.ICEServer, len(sessionGameResponse.Servers))
 	for i, server := range sessionGameResponse.Servers {
+		// Hardcoded until we remove FAF's cotrun from the list
+		if len(server.Urls) > 0 {
+			if strings.Contains(server.Urls[0], "139.162.142.250") {
+				continue
+			}
+		}
+
 		turnServer[i] = pionwebrtc.ICEServer{
 			Username:       server.Username,
 			Credential:     server.Credential,
