@@ -83,7 +83,7 @@ func NewPeerManager(
 		icebreakerEvents:     icebreakerEvents,
 		turnServer:           turnServer,
 		gameUdpPort:          gameUdpPort,
-		forceTurnRelay:       launcherInfo.ForceTurnRelay || sessionInfo.ForceRelay,
+		forceTurnRelay:       true,
 		reconnectionRequests: make(chan uint, maxLobbyPeers),
 		gpgNetToGameChannel:  gpgNetToGameChannel,
 	}
