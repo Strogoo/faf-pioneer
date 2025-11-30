@@ -48,9 +48,11 @@ var showRawLogs = false
 var hideDebug = false
 var clearLogWindow = false
 var relaysUpdated = false
+var region = ""
 
 var myApp  = App
 var forceRelayLabel     *LabelWidget
+var regionLabel         *LabelWidget
 var connTreeView        *TTreeviewWidget
 var notebook            *TNotebookWidget
 var logFrame            *TFrameWidget
@@ -78,6 +80,9 @@ func CreateMainWindow(){
 
 	// Shows if "force relay" is ON or OFF
 	forceRelayLabel = Label(Height(2), Anchor("w"), Txt("Force relay:"), Font("Helvetica", 12))
+
+	// Region
+	regionLabel = Label(Height(2), Anchor("w"), Txt("Version:"), Font("Helvetica", 12))
 
 	// Connections treeview
 	connTreeView = TTreeview(Selectmode("browse"), Columns("1 2 3 4 5 6 7"), Height(13))
@@ -181,6 +186,7 @@ func CreateMainWindow(){
 	GridRowConfigure(myApp, 2, Weight(10))
 
 	Grid(forceRelayLabel, Row(0), Column(0), Sticky("NW"), Pady("0m 0m"), Padx("0m 0m"))
+	Grid(regionLabel, Row(0), Column(0), Sticky("NW"), Pady("0m 0m"), Padx("50m 0m"))
 	
 	Grid(connTreeView, Row(1),  Column(0), Sticky("NW"), Pady("1m"), Ipadx("1m"), Ipady("1m"))
 	Grid(notebook, Row(2), Column(0), Columnspan(2), Sticky("NSWE"))
@@ -413,9 +419,14 @@ func formatLogLines() {
 	}	
 }
 
+func setRegion() {
+
+}
+
 func refreshConnStats(){
 	if pm == nil {
 		pm = adapter.GetPeerManager()
+		regionLabel.Configure(Txt("Version:  " + adapter.GetRegion()))
 	}
 	
 	if pm != nil {

@@ -21,6 +21,11 @@ var PeerManager     *webrtc.PeerManager
 var userNicknames   =make(map[string]string)
 var mu              sync.Mutex
 
+const (
+	// Set region = "RU" to remove all "udp" urls
+	region = "Global"
+)
+
 type Adapter struct {
 	gpgNetFromGame      chan gpgnet.Message
 	gpgNetToGame        chan gpgnet.Message
@@ -84,8 +89,8 @@ func (a *Adapter) Start() error {
 	}()
 
 
-	turnServer := make([]pionwebrtc.ICEServer, len(sessionGameResponse.Servers))
-	for i, server := range sessionGameResponse.Servers {
+	turnServer := []pionwebrtc.ICEServer{}
+	for _, server := range sessionGameResponse.Servers {
 		// Hardcoded until we remove FAF's cotrun from the list
 		if len(server.Urls) > 0 {
 			if strings.Contains(server.Urls[0], "139.162.142.250") {
@@ -93,17 +98,25 @@ func (a *Adapter) Start() error {
 			}
 		}
 
-		turnServer[i] = pionwebrtc.ICEServer{
+		turnServ := pionwebrtc.ICEServer{
 			Username:       server.Username,
 			Credential:     server.Credential,
 			CredentialType: pionwebrtc.ICECredentialTypePassword,
-			URLs:           make([]string, len(server.Urls)),
+			URLs:           []string{},
 		}
 
-		for j, url := range server.Urls {
+		for _, url := range server.Urls {
+			if region == "RU" {
+				if strings.Contains(url, "udp") {
+					continue
+				}
+			}
+
 			// for Java being Java reasons we unfortunately raped the URLs and need to convert it back.
-			turnServer[i].URLs[j] = strings.ReplaceAll(url, "://", ":")
+			turnServ.URLs = append(turnServ.URLs, strings.ReplaceAll(url, "://", ":"))
 		}
+
+		turnServer = append(turnServer, turnServ)
 	}
 
 	// Debug obtained/available ICE servers.
@@ -227,4 +240,8 @@ func GetNicknames() map[string]string {
     }
 	mu.Unlock()
 	return nnames
+}
+
+func GetRegion () string {
+	return region
 }
