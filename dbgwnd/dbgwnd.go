@@ -19,7 +19,7 @@ import (
 
 const (
 	disableRecButnOnNewConnect = 45 //seconds
-	disableRecButnOnManualRec  = 15 //seconds
+	disableRecButnOnManualRec  = 20 //seconds
 )
 
 var pm                  *webrtc.PeerManager
