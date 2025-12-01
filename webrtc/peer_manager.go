@@ -33,7 +33,7 @@ const (
 	// peerFailedTimeout is a duration without network activity before an Agent is considered
 	// failed after disconnected.
 	// Default is 25 Seconds.
-	peerFailedTimeout = time.Second * 30
+	peerFailedTimeout = time.Second * 45
 	// peerKeepAliveInterval is an interval how often the ICE Agent sends extra traffic if there is no activity,
 	// if media is flowing no traffic will be sent.
 	peerKeepAliveInterval = time.Second * 5
@@ -425,9 +425,14 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 
 	applog.Debug("Peer successfully created", zap.Uint("playerId", playerId))
 	
-	go func() {
-		p.initialConnectionWatcher(playerId)
-	}()
+	// Initial connection watcher is temporary disabled
+	// It takes quite some time for RU players to connect (up to 40-60 seconds)
+	// We need to be very careful with any watchers or set high delays so it doesn't break a good atempt
+	// Also players can always reconnect manually, so idk should we even launch some auto reconn on start
+	
+	// go func() {
+	// 	p.initialConnectionWatcher(playerId)
+	// }()
 
 	return newPeer
 }
@@ -675,7 +680,7 @@ func (p *PeerManager) initialConnectionWatcher(playerId uint) {
 
 	peerConnnectedSecondsTotal := 0
 	keepAliveSec := 120
-	reconnectDelaySec := 20
+	reconnectDelaySec := 60  // Ru players need 30+ seconds to establish connection        
 	reconnectAttempts := 0
 	isLeader := false
 
@@ -696,7 +701,7 @@ func (p *PeerManager) initialConnectionWatcher(playerId uint) {
 
 		reconnectDelaySec -= 1
 		if reconnectDelaySec == 0 {
-			reconnectDelaySec = 20
+			reconnectDelaySec = 90
 			reconnectAttempts += 1
 
 			// Sometimes connection go to "connected" state for a second
