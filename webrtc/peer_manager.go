@@ -33,13 +33,13 @@ const (
 	// peerFailedTimeout is a duration without network activity before an Agent is considered
 	// failed after disconnected.
 	// Default is 25 Seconds.
-	peerFailedTimeout = time.Second * 45
+	peerFailedTimeout = time.Second * 120
 	// peerKeepAliveInterval is an interval how often the ICE Agent sends extra traffic if there is no activity,
 	// if media is flowing no traffic will be sent.
 	peerKeepAliveInterval = time.Second * 5
 	// peerReconnectionInterval is an interval how often we will be trying to reconnect after failed reconnection
 	// attempt when Peer goes to Failed/Closed state.
-	peerReconnectionInterval = time.Second * 10
+	peerReconnectionInterval = time.Second * 20
 )
 
 type PeerHandler interface {

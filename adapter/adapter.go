@@ -106,12 +106,25 @@ func (a *Adapter) Start() error {
 		}
 
 		for _, url := range server.Urls {
+			// Remove UDP for ru players as it doesn't work. 
+			// When adapter tries to connect via udp it kinda get the conn with TURN server but then
+			// just getting stuck sending "pings" or whatever (in other words - it starts a "mini DDOS")
+			// and the whole app including UI get freezed.
 			if region == "RU" {
 				if strings.Contains(url, "udp") {
 					continue
 				}
 			}
-
+			
+			// As tests have shown, tcp 80/443 are more stable. 3478/5349 have more packet losses.
+			// Mb it's just RU conn things or Xirsys idk. But for now I remove it for all players
+			// If someone gonna chnage it - exclude tcp 3478/5349 in `if RU` section at least
+			if strings.Contains(url, "tcp") {
+				if strings.Contains(url, "3478") || strings.Contains(url, "5349") {
+					continue
+				}
+			}
+			
 			// for Java being Java reasons we unfortunately raped the URLs and need to convert it back.
 			turnServ.URLs = append(turnServ.URLs, strings.ReplaceAll(url, "://", ":"))
 		}
