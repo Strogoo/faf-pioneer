@@ -33,7 +33,7 @@ fi
 # Calculate the USED_PORT by adding USER_ID to BASE_PORT.
 GPGNET_PORT=$((GPGNET_BASE_PORT + USER_ID))
 
-go run main.go \
+go run cmd/faf-adapter/main.go \
   --user-id "${USER_ID}" \
   --game-id 100 \
   --gpgnet-port ${GPGNET_PORT} \
