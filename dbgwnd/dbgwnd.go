@@ -240,11 +240,14 @@ func reconnNoRelaytBtnClicked(buttonID int){
 }
 
 func reconnectBtnClicked(buttonID int){
+	applog.Info("UI: reconnect button " + fmt.Sprintf("%d", buttonID) + " is pressed. Sorted ids: " + godump.DumpJSONStr(sortedIds))
 	if len(sortedIds) > buttonID{
 		if pm != nil {
 			playerID, _ := strconv.Atoi(sortedIds[buttonID])
 			pm.HandleManualReconnectRequest(uint(playerID))
 		}
+	} else {
+		applog.Error("UI: reconnect button id is out of range")
 	}
 }
 
@@ -649,8 +652,8 @@ func refreshButtons() {
 			// } else {
 			// 	reconnectNoRelayBtn[i].Configure((State("normal")))
 			// }
-
-			idsToDisable = nil
 		}
+		
+		idsToDisable = nil
 	}
 }

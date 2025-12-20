@@ -33,7 +33,7 @@ const (
 	// peerFailedTimeout is a duration without network activity before an Agent is considered
 	// failed after disconnected.
 	// Default is 25 Seconds.
-	peerFailedTimeout = time.Second * 120
+	peerFailedTimeout = time.Second * 30
 	// peerKeepAliveInterval is an interval how often the ICE Agent sends extra traffic if there is no activity,
 	// if media is flowing no traffic will be sent.
 	peerKeepAliveInterval = time.Second * 5
@@ -370,14 +370,16 @@ func (p *PeerManager) addPeerIfMissing(playerId uint) *Peer {
 		if !peer.IsActive() && !peer.IsDisabled() {
 			tSincePeerCreation := time.Now().Unix() - peer.creationTimeSeconds
 
-			// Don't initiate reconnection on start (first 2 min)
+			// Don't initiate reconnection on start (first 60 seconds)
 			// as it breaks a normal attempt that will succeed in a few seconds
-			// There is an additional connection watcher that works first 2 min (also a workaround)
+			// There is an additional connection watcher that works first 2 min -- DISABLED
 			// Will need need proper fix later
-			if tSincePeerCreation > 120 {
+			if tSincePeerCreation > 60 {
 				applog.Info("Peer exists but is inactive, scheduling reconnection",
 					zap.Uint("playerId", playerId),
 				)
+
+
 				p.scheduleReconnection(playerId)
 			} else {
 				applog.Info("Skipping reconnection since peer "+ fmt.Sprintf("%d", playerId) + 
@@ -765,7 +767,7 @@ func (p *PeerManager) HandleManualReconnectRequest(playerId uint) {
 	p.peersMu.Lock()
 	peer, ok := p.peers[playerId]
 	if ok {
-		if !peer.manualReconnIsActive && !peer.remoteManualRRequest {
+		if !peer.manualReconnIsActive {
 			peer.manualReconnIsActive = true
 			p.disableRecBtnPeers = append(p.disableRecBtnPeers, peerAsString)
 			
@@ -816,7 +818,7 @@ func (p *PeerManager) handleRemoteManualReconnRequest(playerId uint) {
 
 			// No need to initiate reconn process when remote request is recieved
 			// We prepare specific turn and then wait for reconn from other side
-			p.preparePeerForManualReconn(playerId)	
+			p.preparePeerForManualReconn(playerId)
 		} else {
 			p.peersMu.Unlock()
 		}
